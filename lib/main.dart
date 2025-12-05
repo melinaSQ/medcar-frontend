@@ -1,7 +1,8 @@
 // lib/main.dart
 
 import 'package:flutter/material.dart';
-import 'package:medcar_frontend/dependency_injection.dart' as di; // Importa con un alias
+import 'package:medcar_frontend/dependency_injection.dart' as di;
+import 'package:medcar_frontend/src/presentation/pages/auth/login/login_page.dart'; // Importa con un alias
 
 void main() async {
   // Es importante asegurar que Flutter esté inicializado antes de llamar a dependencias
@@ -20,11 +21,16 @@ class MyApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return MaterialApp(
       title: 'MedCar App',
-      theme: ThemeData(
-        primarySwatch: Colors.blue,
-      ),
-      // Aquí irá tu primera pantalla, por ejemplo, LoginPage()
-      home: Scaffold(body: Center(child: Text('Setup Completo!'))),
+      /*
+      theme:(
+        colorScheme: ColorScheme.fromSeed(seedColor: Colors.deepPurple),
+        useMaterial3: true,
+      ),*/
+      initialRoute: 'login',
+      routes: {
+        'login': (BuildContext context) => LoginPage(),
+        //'register': (BuildContext context) => RegisterPage(),
+      },
     );
   }
 }
