@@ -5,7 +5,7 @@ import '../../domain/entities/auth_response_entity.dart';
 import '../../domain/repositories/auth_repository.dart';
 import '../datasources/remote/auth_remote_datasource.dart';
 
-const String _TOKEN_KEY = 'auth_token';
+const String _tokenKey = 'auth_token';
 
 class AuthRepositoryImpl implements AuthRepository {
   final AuthRemoteDataSource remoteDataSource;
@@ -41,18 +41,18 @@ class AuthRepositoryImpl implements AuthRepository {
   @override
   Future<void> saveToken(String token) async {
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setString(_TOKEN_KEY, token);
+    await prefs.setString(_tokenKey, token);
   }
 
   @override
   Future<String?> getToken() async {
     final prefs = await SharedPreferences.getInstance();
-    return prefs.getString(_TOKEN_KEY);
+    return prefs.getString(_tokenKey);
   }
 
   @override
   Future<void> logout() async {
     final prefs = await SharedPreferences.getInstance();
-    await prefs.remove(_TOKEN_KEY);
+    await prefs.remove(_tokenKey);
   }
 }

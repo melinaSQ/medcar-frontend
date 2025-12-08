@@ -5,7 +5,7 @@ import 'package:http/http.dart' as http;
 import 'package:medcar_frontend/src/data/models/auth_response_model.dart';
 
 // Define la URL base de tu API
-const String API_URL = 'http://192.168.1.7:3000'; // ¡USA TU IP LOCAL!
+const String apiUrl = 'http://192.168.1.7:3000'; // ¡USA TU IP LOCAL!
 
 abstract class AuthRemoteDataSource {
   Future<AuthResponseModel> login(String email, String password);
@@ -20,7 +20,7 @@ class AuthRemoteDataSourceImpl implements AuthRemoteDataSource {
   @override
   Future<AuthResponseModel> login(String email, String password) async {
     final response = await client.post(
-      Uri.parse('$API_URL/auth/login'),
+      Uri.parse('$apiUrl/auth/login'),
       headers: {'Content-Type': 'application/json'},
       body: json.encode({'email': email, 'password': password}),
     );
@@ -35,7 +35,7 @@ class AuthRemoteDataSourceImpl implements AuthRemoteDataSource {
   @override
   Future<AuthResponseModel> register(Map<String, dynamic> userData) async {
     final response = await client.post(
-      Uri.parse('$API_URL/auth/register'),
+      Uri.parse('$apiUrl/auth/register'),
       headers: {'Content-Type': 'application/json'},
       body: json.encode(userData),
     );

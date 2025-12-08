@@ -2,7 +2,8 @@
 
 import 'package:flutter/material.dart';
 import 'package:medcar_frontend/dependency_injection.dart' as di;
-import 'package:medcar_frontend/src/presentation/pages/auth/login/login_page.dart'; // Importa con un alias
+import 'package:medcar_frontend/src/presentation/pages/auth/login/login_page.dart';
+import 'package:medcar_frontend/src/presentation/pages/auth/register/register_page.dart'; // Importa con un alias
 
 void main() async {
   // Es importante asegurar que Flutter esté inicializado antes de llamar a dependencias
@@ -29,7 +30,7 @@ class MyApp extends StatelessWidget {
       initialRoute: 'login',
       routes: {
         'login': (BuildContext context) => LoginPage(),
-        //'register': (BuildContext context) => RegisterPage(),
+        'register': (BuildContext context) => RegisterPage(),
       },
     );
   }
