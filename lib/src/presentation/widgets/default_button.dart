@@ -29,7 +29,6 @@ class DefaultButton extends StatelessWidget {
     return Container(
       height: height,
       width: width ?? MediaQuery.of(context).size.width,
-      //width: width == null ? MediaQuery.of(context).size.width : width,
       // alignment: Alignment.center,
       margin: margin,
       child: ElevatedButton(

@@ -41,7 +41,9 @@ dependencies:
   http: ^1.2.2 # (usa la última versión)
 
   # Para guardar el token
-  shared_preferences: ^2.3.2 #
+  shared_preferences: ^2.3.2 
+  flutter_bloc: ^9.1.0
+  equatable: ^2.0.5
 
 dev_dependencies:
   flutter_test:
