@@ -76,7 +76,8 @@ class LoginContent extends StatelessWidget {
           //contenido del formulario
           child: Container(
             margin: const EdgeInsets.only(left: 25, right: 25),
-            child: Column(
+            child:SingleChildScrollView(
+              child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 SizedBox(height: 5),
@@ -122,7 +123,8 @@ class LoginContent extends StatelessWidget {
             ),
           ),
         ),
-      ],
+      ),
+    ],
     );
   }
 
