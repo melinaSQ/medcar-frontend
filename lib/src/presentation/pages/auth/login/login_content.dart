@@ -4,20 +4,19 @@ import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:medcar_frontend/src/presentation/pages/auth/login/bloc/login_bloc.dart';
 import 'package:medcar_frontend/src/presentation/pages/auth/login/bloc/login_event.dart';
-import 'package:medcar_frontend/src/presentation/pages/auth/login/bloc/login_state.dart';
 import 'package:medcar_frontend/src/presentation/widgets/default_button.dart';
 import 'package:medcar_frontend/src/presentation/widgets/default_text_field.dart';
 
 class LoginContent extends StatelessWidget {
 
-  LoginState state;
-  LoginContent(this.state);
+  LoginBloc bloc;
+  LoginContent(this.bloc);
   
 
   @override
   Widget build(BuildContext context) {
     return Form(
-      key: state.formKey,
+      key: bloc.state.formKey,
       child: Stack(
         children: [
           //****1 container pantalla compelta opcions de login y registro
@@ -93,14 +92,18 @@ class LoginContent extends StatelessWidget {
       
                   //***campo email
                   DefaultTextField(
-                    onChanged: (text) {},
+                    onChanged: (text) {
+                      bloc.add(EmailChanged(email: text));
+                    },
                     text: 'Correo Electronico',
                     icon: Icons.email_outlined,
                   ),
       
                   //****campo pasword */
                   DefaultTextField(
-                    onChanged: (text) {},
+                    onChanged: (text) {
+                      bloc.add(PasswordChanged(password: text));
+                    },
                     obscureText: true,
                     text: 'Contraseña',
                     icon: Icons.lock_outlined,

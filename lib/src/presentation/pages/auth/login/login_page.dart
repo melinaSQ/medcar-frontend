@@ -23,7 +23,7 @@ class _LoginPageState extends State<LoginPage> {
     return Scaffold(
       body: BlocBuilder<LoginBloc, LoginState>(
         builder: (context, state) {
-          return LoginContent(_bloc.state);
+          return LoginContent(_bloc);
         },
       ),
     );
