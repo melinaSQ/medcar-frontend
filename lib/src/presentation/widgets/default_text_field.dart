@@ -46,7 +46,7 @@ class DefaultTextField extends StatelessWidget {
         obscureText: obscureText,
         style: TextStyle(fontSize: 14),
         initialValue: initialValue,
-        //validator: validator,
+        validator: validator,
         keyboardType: keyboardType,
         decoration: InputDecoration(
             label: Text(

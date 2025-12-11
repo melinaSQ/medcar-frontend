@@ -1,22 +1,24 @@
-// ignore_for_file: use_key_in_widget_constructors, must_be_immutable
+// ignore_for_file: use_key_in_widget_constructors, must_be_immutable, avoid_print
 
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:medcar_frontend/src/presentation/pages/auth/login/bloc/login_bloc.dart';
 import 'package:medcar_frontend/src/presentation/pages/auth/login/bloc/login_event.dart';
+import 'package:medcar_frontend/src/presentation/pages/auth/login/bloc/login_state.dart';
+import 'package:medcar_frontend/src/presentation/utils/bloc_from_item.dart';
 import 'package:medcar_frontend/src/presentation/widgets/default_button.dart';
 import 'package:medcar_frontend/src/presentation/widgets/default_text_field.dart';
 
 class LoginContent extends StatelessWidget {
 
-  LoginBloc bloc;
-  LoginContent(this.bloc);
+  LoginState state;
+  LoginContent(this.state);
   
 
   @override
   Widget build(BuildContext context) {
     return Form(
-      key: bloc.state.formKey,
+      key: state.formKey,
       child: Stack(
         children: [
           //****1 container pantalla compelta opcions de login y registro
@@ -93,7 +95,10 @@ class LoginContent extends StatelessWidget {
                   //***campo email
                   DefaultTextField(
                     onChanged: (text) {
-                      bloc.add(EmailChanged(email: text));
+                      context.read<LoginBloc>().add(EmailChanged(email: BlocFormItem(value: text)));
+                    },
+                    validator: (value) {
+                      return state.email.error;
                     },
                     text: 'Correo Electronico',
                     icon: Icons.email_outlined,
@@ -102,7 +107,10 @@ class LoginContent extends StatelessWidget {
                   //****campo pasword */
                   DefaultTextField(
                     onChanged: (text) {
-                      bloc.add(PasswordChanged(password: text));
+                      context.read<LoginBloc>().add(PasswordChanged(password: BlocFormItem(value: text)));
+                    },
+                    validator: (value) {
+                      return state.password.error;
                     },
                     obscureText: true,
                     text: 'Contraseña',
@@ -120,7 +128,11 @@ class LoginContent extends StatelessWidget {
       
                     onPressed: () {
                       // Acción al presionar el botón
-                      context.read<LoginBloc>().add(FormSubmit());
+                      if (state.formKey!.currentState!.validate()) {
+                        context.read<LoginBloc>().add(FormSubmit());
+                      } else {
+                        print('El formulario no es valido');
+                      }
                     },
                   ),
       

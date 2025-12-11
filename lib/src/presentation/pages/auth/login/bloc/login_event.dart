@@ -1,4 +1,6 @@
 
+import 'package:medcar_frontend/src/presentation/utils/bloc_from_item.dart';
+
 abstract class LoginEvent {}
 
 //evento para inicializar el formulario
@@ -7,13 +9,13 @@ class LoginInitEvent extends LoginEvent {}
 
 //evento para cambiar el email
 class EmailChanged extends LoginEvent {
-  final String email;
+  final BlocFormItem email;
   EmailChanged({ required this.email });
 }
 
 //evento para cambiar la contraseña
 class PasswordChanged extends LoginEvent {
-  final String password;
+  final BlocFormItem password;
   PasswordChanged({ required this.password });
 }
 
