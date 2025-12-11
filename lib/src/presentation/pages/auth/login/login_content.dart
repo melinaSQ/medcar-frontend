@@ -87,8 +87,8 @@ class LoginContent extends StatelessWidget {
                 children: [
                   SizedBox(height: 5),
                   _imageMedcar(),
-                  _text('Introduce tu correo electronico', 28),
-                  _text('Te enviaremos un código para verificar tu correo', 18),
+                  _text('Introduce tu correo electronico', 20),
+                  _text('Te enviaremos un código para verificar tu correo', 13),
       
                   //***campo email
                   DefaultTextField(
@@ -110,7 +110,7 @@ class LoginContent extends StatelessWidget {
                     margin: EdgeInsets.only(top: 15, left: 20, right: 20),
                   ),
       
-                  SizedBox(height: 40),
+                  SizedBox(height: 25),
       
                   DefaultButton(
                     text: 'Iniciar Sesión',
@@ -124,7 +124,7 @@ class LoginContent extends StatelessWidget {
                     },
                   ),
       
-                  SizedBox(height: MediaQuery.of(context).size.height * 0.15),
+                  SizedBox(height: MediaQuery.of(context).size.height * 0.05),
                   _separatorOr(),
                   SizedBox(height: 10),
                   _textDontHaveAccount(context),
@@ -166,8 +166,8 @@ class LoginContent extends StatelessWidget {
       alignment: Alignment.center,
       child: Image.asset(
         'assets/img/medcar_logo_color.png',
-        width: 400, // ajustar el ancho segun sea necesario pixeles
-        height: 300, // ajustar el alto segun sea necesario pixeles
+        width: 350, // ajustar el ancho segun sea necesario pixeles
+        height: 200, // ajustar el alto segun sea necesario pixeles (reducido de 300 a 200)
       ),
     );
   }
@@ -178,7 +178,7 @@ class LoginContent extends StatelessWidget {
       children: [
         Text(
           'No tienes cuenta?',
-          style: TextStyle(color: Colors.grey[900], fontSize: 16),
+          style: TextStyle(color: Colors.grey[900], fontSize: 14),
         ),
         SizedBox(width: 7),
         GestureDetector(
@@ -190,7 +190,7 @@ class LoginContent extends StatelessWidget {
             style: TextStyle(
               color: Colors.black,
               fontWeight: FontWeight.bold,
-              fontSize: 16,
+              fontSize: 14,
             ),
           ),
         ),
@@ -208,7 +208,7 @@ class LoginContent extends StatelessWidget {
           color: Colors.black,
           margin: EdgeInsets.only(right: 5),
         ),
-        Text('O', style: TextStyle(color: Colors.black, fontSize: 17)),
+        Text('O', style: TextStyle(color: Colors.black, fontSize: 15)),
         Container(
           width: 25,
           height: 1,
@@ -228,7 +228,7 @@ class LoginContent extends StatelessWidget {
         quarterTurns: 1,
         child: Text(
           'Registro',
-          style: TextStyle(color: Colors.white, fontSize: 24),
+          style: TextStyle(color: Colors.white, fontSize: 20),
         ),
       ),
     );
@@ -241,7 +241,7 @@ class LoginContent extends StatelessWidget {
         'Login',
         style: TextStyle(
           color: Colors.white,
-          fontSize: 28,
+          fontSize: 20,
           fontWeight: FontWeight.bold,
         ),
       ),

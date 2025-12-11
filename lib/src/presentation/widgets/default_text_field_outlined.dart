@@ -22,7 +22,7 @@ class DefaultTextFieldOutlined extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      height: 45,
+      height: 50,
       margin: margin,
       decoration: BoxDecoration(
         // color: Color.fromRGBO(255, 255, 255, 0.2),
@@ -36,11 +36,16 @@ class DefaultTextFieldOutlined extends StatelessWidget {
           onChanged(text);
         },
         validator: validator,
+        style: TextStyle(
+          //color: Colors.white,
+          fontSize: 14, // Tamaño del texto que escribe el usuario
+        ),
         decoration: InputDecoration(
           label: Text(
             text,
             style: TextStyle(
-              color: Colors.white
+              color: Colors.white,
+              fontSize: 14,
             ),
           ),
           

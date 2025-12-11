@@ -19,7 +19,7 @@ class DefaultTextField extends StatelessWidget {
       required this.text,
       required this.icon,
       required this.onChanged,
-      this.margin = const EdgeInsets.only(top: 30, left: 20, right: 20),
+      this.margin = const EdgeInsets.only(top: 20, left: 20, right: 20),
       this.validator,
       this.backgroundColor = Colors.white,
       //this.backgroundColor = const Color.fromARGB(255, 219, 216, 216),
@@ -32,6 +32,7 @@ class DefaultTextField extends StatelessWidget {
     return Container(
       height: 65,
       margin: margin,
+      padding: EdgeInsets.only(right: 20),
       decoration: BoxDecoration(
           color: backgroundColor,
           borderRadius: BorderRadius.only(
@@ -43,14 +44,14 @@ class DefaultTextField extends StatelessWidget {
           onChanged(text);
         },
         obscureText: obscureText,
-        style: TextStyle(fontSize: 20),
+        style: TextStyle(fontSize: 14),
         initialValue: initialValue,
         //validator: validator,
         keyboardType: keyboardType,
         decoration: InputDecoration(
             label: Text(
               text,
-              style: TextStyle(fontSize: 19),
+              style: TextStyle(fontSize: 14),
             ),
             border: InputBorder.none,
             prefixIcon: Container(
@@ -62,11 +63,11 @@ class DefaultTextField extends StatelessWidget {
                 children: [
                   Icon(
                     icon,
-                    size: 32,
+                    size: 22,
                   ),
                   Container(
                     margin: EdgeInsets.only(right: 2, left: 15),
-                    height: 37,
+                    height: 22,
                     width: 1,
                     color: Colors.grey,
                   )

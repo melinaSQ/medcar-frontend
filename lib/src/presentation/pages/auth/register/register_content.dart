@@ -73,7 +73,7 @@ class RegisterContent extends StatelessWidget {
                       DefaultTextFieldOutlined(
                         text: 'Nombre',
                         icon: Icons.person_outline,
-                        margin: EdgeInsets.only(left: 50, right: 50, top: 50),
+                        margin: EdgeInsets.only(left: 50, right: 50, top: 15),
                         onChanged: (text) {
                           
                         },
@@ -107,7 +107,7 @@ class RegisterContent extends StatelessWidget {
                         
                       ),
                       DefaultTextFieldOutlined(
-                        text: 'Password',
+                        text: 'Contraseña',
                         icon: Icons.lock_outlined,
                         margin: EdgeInsets.only(left: 50, right: 50, top: 15),
                         onChanged: (text) {
@@ -116,7 +116,7 @@ class RegisterContent extends StatelessWidget {
                         
                       ),
                       DefaultTextFieldOutlined(
-                        text: 'Confirmar Password',
+                        text: 'Confirmar Contraseña',
                         icon: Icons.lock_outlined,
                         margin: EdgeInsets.only(left: 50, right: 50, top: 15),
                         onChanged: (text) {
@@ -126,7 +126,7 @@ class RegisterContent extends StatelessWidget {
                       ),
 
                       SizedBox(
-                        height: 40,
+                        height: 20,
                       ),
 
                       //****boton de registrase */
@@ -139,10 +139,11 @@ class RegisterContent extends StatelessWidget {
                         textColor: Colors.white,
                         margin: EdgeInsets.only(top: 20, left: 55, right: 55),
                       ),
-                      SizedBox(height: 25),
+                      SizedBox(height: MediaQuery.of(context).size.height * 0.05),
                       _separatorOr(),
                       SizedBox(height: 10),
-                      _textIAlreadyHaveAccount(context)
+                      _textIAlreadyHaveAccount(context),
+                      SizedBox(height: 50),
                     ],
                   ),
                 ),
@@ -160,7 +161,7 @@ class RegisterContent extends StatelessWidget {
       child: Text(
         'Registro',
         style: TextStyle(
-            fontSize: 28, color: Colors.white, fontWeight: FontWeight.bold),
+            fontSize: 20, color: Colors.white, fontWeight: FontWeight.bold),
       ),
     );
   }
@@ -175,7 +176,7 @@ class RegisterContent extends StatelessWidget {
         child: Text(
           'Login',
           style: TextStyle(
-            fontSize: 24,
+            fontSize: 20,
             color: Colors.white,
           ),
         ),
@@ -185,14 +186,13 @@ class RegisterContent extends StatelessWidget {
 
   Widget _imageMedcar() {
     return Container(
-      margin: EdgeInsets.only(
-        top: 50,
-      ),
+      padding: EdgeInsets.all(0),
+      margin: EdgeInsets.only(left: 20, right: 20, top: 38),
       alignment: Alignment.center,
       child: Image.asset(
         'assets/img/medcar_logo_color.png',
-        width: 400,
-        height: 200,
+        width: 280, // ajustar el ancho segun sea necesario pixeles
+        height: 140, // ajustar el alto segun sea necesario pixeles (reducido para subir el form)
       ),
     );
   }
@@ -209,7 +209,7 @@ class RegisterContent extends StatelessWidget {
         ),
         Text(
           'O',
-          style: TextStyle(color: Colors.black, fontSize: 17),
+          style: TextStyle(color: Colors.black, fontSize: 15),
         ),
         Container(
           width: 25,
@@ -227,7 +227,7 @@ class RegisterContent extends StatelessWidget {
       children: [
         Text(
           'Ya tienes cuenta?',
-          style: TextStyle(color: Colors.grey[900], fontSize: 16),
+          style: TextStyle(color: Colors.grey[900], fontSize: 14),
         ),
         SizedBox(width: 5),
         GestureDetector(
@@ -237,7 +237,7 @@ class RegisterContent extends StatelessWidget {
           child: Text(
             'Inicia sesion',
             style: TextStyle(
-                color: Colors.black, fontWeight: FontWeight.bold, fontSize: 16),
+                color: Colors.black, fontWeight: FontWeight.bold, fontSize: 14),
           ),
         ),
       ],
@@ -247,12 +247,12 @@ class RegisterContent extends StatelessWidget {
   Widget _imageBackground(BuildContext context) {
     return Container(
       alignment: Alignment.bottomCenter,
-      margin: EdgeInsets.only(bottom: 300),
+      margin: EdgeInsets.only(bottom: 200),
       child: Image.asset(
         'assets/img/celular_con_ambulancia_3d.png',
         width: MediaQuery.of(context).size.width * 0.9,
         height: MediaQuery.of(context).size.height * 0.4,
-        opacity: AlwaysStoppedAnimation(0.3),
+        opacity: AlwaysStoppedAnimation(0.2),
       ),
     );
   }
