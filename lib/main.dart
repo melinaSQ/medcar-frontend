@@ -2,9 +2,8 @@
 
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:medcar_frontend/bloc_providers.dart';
 import 'package:medcar_frontend/dependency_injection.dart' as di;
-import 'package:medcar_frontend/src/presentation/pages/auth/login/bloc/login_bloc.dart';
-import 'package:medcar_frontend/src/presentation/pages/auth/login/bloc/login_event.dart';
 import 'package:medcar_frontend/src/presentation/pages/auth/login/login_page.dart';
 import 'package:medcar_frontend/src/presentation/pages/auth/register/register_page.dart'; // Importa con un alias
 
@@ -23,8 +22,8 @@ class MyApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return BlocProvider(
-      create: (context) => LoginBloc()..add(LoginInitEvent()),
+    return MultiBlocProvider(
+      providers: blocProviders,
       child: MaterialApp(
         debugShowCheckedModeBanner: false, // Quitar la etiqueta debug
         title: 'MedCar App',
