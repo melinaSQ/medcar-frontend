@@ -27,8 +27,8 @@ class _SplashPageState extends State<SplashPage> {
       if (!mounted) return;
       
       if (session != null) {
-        // Usuario tiene sesión activa, ir a home
-        Navigator.pushReplacementNamed(context, 'client/home');
+        // Usuario tiene sesión activa, ir a selección de roles
+        Navigator.pushReplacementNamed(context, 'roles');
       } else {
         // No hay sesión, ir a login
         Navigator.pushReplacementNamed(context, 'login');

@@ -22,6 +22,7 @@ class _LoginPageState extends State<LoginPage> {
     });
   }
 
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -29,9 +30,10 @@ class _LoginPageState extends State<LoginPage> {
         listener: (context, state) {
           if (state.formStatus == FormStatus.success) {
             context.read<LoginBloc>().add(ResetFormStatus());
+            // Ir a selección de roles
             Navigator.pushNamedAndRemoveUntil(
               context, 
-              'client/home', 
+              'roles', 
               (route) => false,
             );
           } else if (state.formStatus == FormStatus.failure) {

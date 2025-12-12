@@ -18,6 +18,14 @@ abstract class ServiceRequestRemoteDataSource {
     required int requestId,
     required String token,
   });
+
+  Future<List<Map<String, dynamic>>> getPendingRequests({required String token});
+
+  Future<Map<String, dynamic>> assignRequest({
+    required int requestId,
+    required int shiftId,
+    required String token,
+  });
 }
 
 class ServiceRequestRemoteDataSourceImpl implements ServiceRequestRemoteDataSource {
@@ -76,6 +84,51 @@ class ServiceRequestRemoteDataSourceImpl implements ServiceRequestRemoteDataSour
     if (response.statusCode != 200 && response.statusCode != 204) {
       final errorBody = json.decode(response.body);
       throw Exception(errorBody['message'] ?? 'Error al cancelar la solicitud');
+    }
+  }
+
+  @override
+  Future<List<Map<String, dynamic>>> getPendingRequests({required String token}) async {
+    final response = await client.get(
+      Uri.parse('$apiUrl/service-requests/pending'),
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer $token',
+      },
+    );
+
+    if (response.statusCode == 200) {
+      final List<dynamic> data = json.decode(response.body);
+      return data.cast<Map<String, dynamic>>();
+    } else {
+      final errorBody = json.decode(response.body);
+      throw Exception(errorBody['message'] ?? 'Error al obtener solicitudes');
+    }
+  }
+
+  @override
+  Future<Map<String, dynamic>> assignRequest({
+    required int requestId,
+    required int shiftId,
+    required String token,
+  }) async {
+    final response = await client.patch(
+      Uri.parse('$apiUrl/service-requests/assign'),
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer $token',
+      },
+      body: json.encode({
+        'requestId': requestId,
+        'shiftId': shiftId,
+      }),
+    );
+
+    if (response.statusCode == 200) {
+      return json.decode(response.body);
+    } else {
+      final errorBody = json.decode(response.body);
+      throw Exception(errorBody['message'] ?? 'Error al asignar solicitud');
     }
   }
 }

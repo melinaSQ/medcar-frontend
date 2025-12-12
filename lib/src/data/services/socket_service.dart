@@ -59,6 +59,8 @@ class SocketService {
   final _requestAssignedController = StreamController<RequestUpdate>.broadcast();
   final _ambulanceLocationController = StreamController<AmbulanceLocation>.broadcast();
   final _statusUpdateController = StreamController<RequestUpdate>.broadcast();
+  final _newMissionController = StreamController<Map<String, dynamic>>.broadcast();
+  final _newServiceRequestController = StreamController<Map<String, dynamic>>.broadcast();
 
   // Getters para los streams
   Stream<bool> get connectionStream => _connectionController.stream;
@@ -66,6 +68,8 @@ class SocketService {
   Stream<RequestUpdate> get requestAssignedStream => _requestAssignedController.stream;
   Stream<AmbulanceLocation> get ambulanceLocationStream => _ambulanceLocationController.stream;
   Stream<RequestUpdate> get statusUpdateStream => _statusUpdateController.stream;
+  Stream<Map<String, dynamic>> get onNewMission => _newMissionController.stream;
+  Stream<Map<String, dynamic>> get onNewServiceRequest => _newServiceRequestController.stream;
 
   bool get isConnected => _isConnected;
   bool get isAuthenticated => _isAuthenticated;
@@ -160,6 +164,37 @@ class SocketService {
         print('Error parseando request_status_updated: $e');
       }
     });
+
+    // Evento: Nueva misión para el conductor
+    _socket!.on('new_mission', (data) {
+      print('🚨 Nueva misión recibida: $data');
+      try {
+        _newMissionController.add(data as Map<String, dynamic>);
+      } catch (e) {
+        print('Error parseando new_mission: $e');
+      }
+    });
+
+    // Evento: Nueva solicitud de servicio (para admins)
+    _socket!.on('new_service_request', (data) {
+      print('🆕 Nueva solicitud de servicio: $data');
+      try {
+        _newServiceRequestController.add(data as Map<String, dynamic>);
+      } catch (e) {
+        print('Error parseando new_service_request: $e');
+      }
+    });
+
+    // Evento: Solicitud cancelada
+    _socket!.on('request_canceled', (data) {
+      print('❌ Solicitud cancelada: $data');
+      try {
+        final update = RequestUpdate.fromJson(data as Map<String, dynamic>);
+        _statusUpdateController.add(update);
+      } catch (e) {
+        print('Error parseando request_canceled: $e');
+      }
+    });
   }
 
   void _authenticate(String token) {
@@ -168,6 +203,21 @@ class SocketService {
     final payload = json.encode({'token': token});
     _socket!.emit('authenticate', payload);
     print('🔐 Enviando autenticación WebSocket...');
+  }
+
+  /// Enviar ubicación del conductor al servidor
+  void sendLocation({required int shiftId, required double lat, required double lon}) {
+    if (_socket == null || !_isConnected || !_isAuthenticated) {
+      print('⚠️ No se puede enviar ubicación: no conectado o autenticado');
+      return;
+    }
+
+    _socket!.emit('update_location', {
+      'shiftId': shiftId,
+      'lat': lat,
+      'lon': lon,
+    });
+    print('📍 Ubicación enviada: lat=$lat, lon=$lon');
   }
 
   /// Desconectar del servidor
@@ -187,6 +237,8 @@ class SocketService {
     _requestAssignedController.close();
     _ambulanceLocationController.close();
     _statusUpdateController.close();
+    _newMissionController.close();
+    _newServiceRequestController.close();
   }
 }
 

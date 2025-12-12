@@ -25,6 +25,13 @@ class ClientHomeContent extends StatelessWidget {
         iconTheme: const IconThemeData(color: Colors.white),
         actions: [
           IconButton(
+            icon: const Icon(Icons.swap_horiz),
+            tooltip: 'Cambiar rol',
+            onPressed: () {
+              Navigator.pushReplacementNamed(context, 'roles');
+            },
+          ),
+          IconButton(
             icon: const Icon(Icons.logout),
             onPressed: () {
               _showLogoutDialog(context);

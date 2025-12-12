@@ -28,11 +28,14 @@ class LoginBloc extends Bloc<LoginEvent, LoginState> {
       emit(state.copyWith(formStatus: FormStatus.loading));
       
       try {
-        await loginUseCase.call(
+        final authResponse = await loginUseCase.call(
           email: state.email.value, 
           password: state.password.value
         );
-        emit(state.copyWith(formStatus: FormStatus.success));
+        emit(state.copyWith(
+          formStatus: FormStatus.success,
+          userRoles: authResponse.user.roles,
+        ));
       } catch (e) {
         emit(state.copyWith(
           formStatus: FormStatus.failure,

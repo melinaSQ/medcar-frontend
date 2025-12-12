@@ -10,6 +10,7 @@ class LoginState extends Equatable {
   final GlobalKey<FormState>? formKey;
   final FormStatus formStatus;
   final String? errorMessage;
+  final List<String> userRoles;
 
   const LoginState({
     this.email = const BlocFormItem(error: 'Ingresa el email'),
@@ -17,6 +18,7 @@ class LoginState extends Equatable {
     this.formKey,
     this.formStatus = FormStatus.initial,
     this.errorMessage,
+    this.userRoles = const [],
   });
 
   LoginState copyWith({
@@ -25,6 +27,7 @@ class LoginState extends Equatable {
     GlobalKey<FormState>? formKey,
     FormStatus? formStatus,
     String? errorMessage,
+    List<String>? userRoles,
   }) {
     return LoginState(
       email: email ?? this.email,
@@ -32,9 +35,10 @@ class LoginState extends Equatable {
       formKey: formKey ?? this.formKey,
       formStatus: formStatus ?? this.formStatus,
       errorMessage: errorMessage,
+      userRoles: userRoles ?? this.userRoles,
     );
   }
 
   @override
-  List<Object?> get props => [email, password, formStatus, errorMessage];
+  List<Object?> get props => [email, password, formStatus, errorMessage, userRoles];
 }
