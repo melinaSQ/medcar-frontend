@@ -1,47 +1,46 @@
+// lib/src/presentation/pages/auth/login/bloc/login_bloc.dart
 // ignore_for_file: avoid_print
 
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:medcar_frontend/src/domain/usecases/login_usecase.dart'; // ¡Asegúrate de importar el caso de uso!
 import 'package:medcar_frontend/src/presentation/pages/auth/login/bloc/login_event.dart';
 import 'package:medcar_frontend/src/presentation/pages/auth/login/bloc/login_state.dart';
-import 'package:medcar_frontend/src/presentation/utils/bloc_from_item.dart';
 
 class LoginBloc extends Bloc<LoginEvent, LoginState> {
   
-  final formKey = GlobalKey<FormState>();
+  // 1. Declara el caso de uso como una propiedad final
+  final LoginUseCase loginUseCase;
 
-  LoginBloc() : super(LoginState()) {
+  // 2. Modifica el constructor para que requiera el caso de uso
+  LoginBloc({required this.loginUseCase}) : super(LoginState(formKey: GlobalKey<FormState>())) {
 
     on<LoginInitEvent>((event, emit) {
-      emit(state.copyWith(formKey: formKey));
+      emit(state.copyWith(formKey: state.formKey));
     });
     
     on<EmailChanged>((event, emit) {
-      // event.email  LO QUE EL USUARIO ESTA ESCRIBIENDO
-      emit(state.copyWith(
-          email: BlocFormItem(
-              value: event.email.value,
-              error: event.email.value.isEmpty ? 'Ingresa el email' : null),
-          formKey: formKey));
+      emit(state.copyWith(email: event.email));
     });
 
     on<PasswordChanged>((event, emit) {
-      emit(state.copyWith(
-          password: BlocFormItem(
-              value: event.password.value,
-              error: event.password.value.isEmpty
-                  ? 'Ingresa el password'
-                  : event.password.value.length < 6
-                      ? 'Minimo 6 caracteres'
-                      : null),
-          formKey: formKey));
+      emit(state.copyWith(password: event.password));
     });
 
     on<FormSubmit>((event, emit) async {
       print('Email: ${state.email.value}');
       print('Password: ${state.password.value}');
+      
+      try {
+        // 3. ¡Ahora puedes usar el caso de uso!
+        final authResponse = await loginUseCase.call(
+          email: state.email.value, 
+          password: state.password.value
+        );
+        print('LOGIN EXITOSO: ${authResponse.user.name}');
+      } catch (e) {
+        print('ERROR EN LOGIN: ${e.toString()}');
+      }
     });
-
-    
   }
 }

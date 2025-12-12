@@ -1,32 +1,21 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:medcar_frontend/src/presentation/pages/auth/login/bloc/login_bloc.dart';
-import 'package:medcar_frontend/src/presentation/pages/auth/login/bloc/login_event.dart';
 import 'package:medcar_frontend/src/presentation/pages/auth/login/bloc/login_state.dart';
 import 'package:medcar_frontend/src/presentation/pages/auth/login/login_content.dart';
 
-class LoginPage extends StatefulWidget {
+class LoginPage extends StatelessWidget { // <--- Cambiado a StatelessWidget
   const LoginPage({super.key});
-
-  @override
-  State<LoginPage> createState() => _LoginPageState();
-}
-
-class _LoginPageState extends State<LoginPage> {
-  // HOT RELOAD - CTRL + S
-  // HOT RESTART - CTRL + Shift + F5
-  // FULL RESTART
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      body: BlocProvider(
-        create: (context) => LoginBloc()..add(LoginInitEvent()),
-        child: BlocBuilder<LoginBloc, LoginState>(
-          builder: (context, state) {
-            return LoginContent(state);
-          },
-        ),
+      body: BlocBuilder<LoginBloc, LoginState>(
+        builder: (context, state) {
+          // El LoginContent que ya tienes, ahora recibe el 'state'
+          // directamente del BlocBuilder.
+          return LoginContent(state); 
+        },
       ),
     );
   }
