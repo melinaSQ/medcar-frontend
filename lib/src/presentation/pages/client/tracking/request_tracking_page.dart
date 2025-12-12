@@ -1,9 +1,12 @@
 // lib/src/presentation/pages/client/tracking/request_tracking_page.dart
 
+// ignore_for_file: avoid_print, deprecated_member_use
+
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:medcar_frontend/dependency_injection.dart';
+import 'package:medcar_frontend/src/data/services/directions_service.dart';
 import 'package:medcar_frontend/src/data/services/socket_service.dart';
 import 'package:medcar_frontend/src/domain/repositories/auth_repository.dart';
 import 'package:medcar_frontend/src/domain/repositories/service_request_repository.dart';
@@ -33,6 +36,11 @@ class _RequestTrackingPageState extends State<RequestTrackingPage> {
   LatLng? _ambulancePosition;
   bool _isConnected = false;
   bool _isCanceling = false;
+  
+  // ETA y distancia
+  String? _eta;
+  String? _distance;
+  bool _isLoadingRoute = false;
   
   Set<Marker> _markers = {};
   Set<Polyline> _polylines = {};
@@ -93,6 +101,7 @@ class _RequestTrackingPageState extends State<RequestTrackingPage> {
       });
 
       _locationSub = _socketService.ambulanceLocationStream.listen((location) {
+        print('📍 Cliente recibió ubicación: lat=${location.lat}, lon=${location.lon}');
         _updateAmbulancePosition(location.lat, location.lon);
       });
 
@@ -108,9 +117,11 @@ class _RequestTrackingPageState extends State<RequestTrackingPage> {
     }
   }
 
-  void _updateAmbulancePosition(double lat, double lng) {
+  void _updateAmbulancePosition(double lat, double lng) async {
+    final newPosition = LatLng(lat, lng);
+    
     setState(() {
-      _ambulancePosition = LatLng(lat, lng);
+      _ambulancePosition = newPosition;
       
       // Actualizar marcador de ambulancia
       _markers = {
@@ -119,23 +130,69 @@ class _RequestTrackingPageState extends State<RequestTrackingPage> {
           markerId: const MarkerId('ambulance_location'),
           position: _ambulancePosition!,
           icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueBlue),
-          infoWindow: const InfoWindow(title: 'Ambulancia'),
-        ),
-      };
-
-      // Dibujar línea entre ambulancia y usuario
-      _polylines = {
-        Polyline(
-          polylineId: const PolylineId('route'),
-          points: [_ambulancePosition!, LatLng(widget.userLat, widget.userLng)],
-          color: Colors.blue,
-          width: 4,
+          infoWindow: InfoWindow(
+            title: 'Ambulancia',
+            snippet: _eta != null ? 'Llega en $_eta' : null,
+          ),
         ),
       };
     });
 
+    // Obtener ruta real con Google Directions API
+    await _getDirections(newPosition);
+    
     // Ajustar cámara para mostrar ambos puntos
     _fitBounds();
+  }
+
+  Future<void> _getDirections(LatLng ambulancePos) async {
+    if (_isLoadingRoute) return;
+    
+    _isLoadingRoute = true;
+    
+    try {
+      final userPos = LatLng(widget.userLat, widget.userLng);
+      final result = await DirectionsService.getDirections(
+        origin: ambulancePos,
+        destination: userPos,
+      );
+
+      if (result != null && mounted) {
+        setState(() {
+          _eta = result.duration;
+          _distance = result.distance;
+          
+          // Dibujar la ruta real
+          _polylines = {
+            Polyline(
+              polylineId: const PolylineId('route'),
+              points: result.polylinePoints,
+              color: const Color(0xFF652580),
+              width: 5,
+            ),
+          };
+        });
+        
+        print('📍 Ruta obtenida: $_distance, ETA: $_eta');
+      }
+    } catch (e) {
+      print('❌ Error obteniendo ruta: $e');
+      // Si falla, dibujar línea recta
+      if (mounted) {
+        setState(() {
+          _polylines = {
+            Polyline(
+              polylineId: const PolylineId('route'),
+              points: [ambulancePos, LatLng(widget.userLat, widget.userLng)],
+              color: Colors.blue,
+              width: 4,
+            ),
+          };
+        });
+      }
+    } finally {
+      _isLoadingRoute = false;
+    }
   }
 
   void _fitBounds() {
@@ -388,6 +445,65 @@ class _RequestTrackingPageState extends State<RequestTrackingPage> {
               ),
             ],
           ),
+          
+          // ETA y distancia (solo si hay ambulancia en camino)
+          if (_eta != null && _distance != null && _currentStatus == 'ON_THE_WAY') ...[
+            const SizedBox(height: 12),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+              decoration: BoxDecoration(
+                color: const Color(0xFF652580).withOpacity(0.1),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: const Color(0xFF652580).withOpacity(0.3)),
+              ),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceAround,
+                children: [
+                  Column(
+                    children: [
+                      const Icon(Icons.access_time, color: Color(0xFF652580), size: 24),
+                      const SizedBox(height: 4),
+                      Text(
+                        _eta!,
+                        style: const TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold,
+                          color: Color(0xFF652580),
+                        ),
+                      ),
+                      Text(
+                        'Tiempo estimado',
+                        style: TextStyle(fontSize: 11, color: Colors.grey[600]),
+                      ),
+                    ],
+                  ),
+                  Container(
+                    height: 40,
+                    width: 1,
+                    color: Colors.grey[300],
+                  ),
+                  Column(
+                    children: [
+                      const Icon(Icons.route, color: Color(0xFF652580), size: 24),
+                      const SizedBox(height: 4),
+                      Text(
+                        _distance!,
+                        style: const TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold,
+                          color: Color(0xFF652580),
+                        ),
+                      ),
+                      Text(
+                        'Distancia',
+                        style: TextStyle(fontSize: 11, color: Colors.grey[600]),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ],
           
           const SizedBox(height: 16),
           

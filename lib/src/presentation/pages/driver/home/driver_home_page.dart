@@ -1,5 +1,7 @@
 // lib/src/presentation/pages/driver/home/driver_home_page.dart
 
+// ignore_for_file: avoid_print, deprecated_member_use
+
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
@@ -7,6 +9,7 @@ import 'package:geolocator/geolocator.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:medcar_frontend/dependency_injection.dart';
 import 'package:medcar_frontend/src/data/datasources/remote/driver_remote_datasource.dart';
+import 'package:medcar_frontend/src/data/services/directions_service.dart';
 import 'package:medcar_frontend/src/data/services/socket_service.dart';
 import 'package:medcar_frontend/src/domain/repositories/auth_repository.dart';
 import 'bloc/driver_home_bloc.dart';
@@ -44,6 +47,12 @@ class _DriverHomeViewState extends State<_DriverHomeView> {
   Timer? _locationTimer;
   StreamSubscription? _missionSub;
   int? _currentShiftId;
+  
+  // Ruta y ETA
+  Set<Polyline> _polylines = {};
+  String? _eta;
+  String? _distance;
+  LatLng? _driverPosition;
 
   @override
   void initState() {
@@ -110,8 +119,46 @@ class _DriverHomeViewState extends State<_DriverHomeView> {
     );
   }
 
-  void _startLocationUpdates() {
-    if (_currentShiftId == null) return;
+  Future<void> _startLocationUpdates() async {
+    print('🚀 _startLocationUpdates called, shiftId: $_currentShiftId');
+    
+    if (_currentShiftId == null) {
+      print('❌ shiftId is null, cannot send location');
+      return;
+    }
+
+    // Verificar y solicitar permisos de ubicación
+    LocationPermission permission = await Geolocator.checkPermission();
+    if (permission == LocationPermission.denied) {
+      permission = await Geolocator.requestPermission();
+      if (permission == LocationPermission.denied) {
+        print('❌ Permisos de ubicación denegados');
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('⚠️ Se requieren permisos de ubicación para el seguimiento'),
+              backgroundColor: Colors.orange,
+            ),
+          );
+        }
+        return;
+      }
+    }
+
+    if (permission == LocationPermission.deniedForever) {
+      print('❌ Permisos de ubicación denegados permanentemente');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('⚠️ Habilita los permisos de ubicación en Configuración'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+      return;
+    }
+
+    print('✅ Permisos de ubicación concedidos');
 
     // Enviar ubicación cada 5 segundos
     _locationTimer?.cancel();
@@ -120,15 +167,66 @@ class _DriverHomeViewState extends State<_DriverHomeView> {
         final position = await Geolocator.getCurrentPosition(
           desiredAccuracy: LocationAccuracy.high,
         );
+        print('📍 Sending location: lat=${position.latitude}, lon=${position.longitude}, shiftId=$_currentShiftId');
         _socketService.sendLocation(
           shiftId: _currentShiftId!,
           lat: position.latitude,
           lon: position.longitude,
         );
+        
+        // Actualizar posición del conductor y ruta
+        if (mounted) {
+          setState(() {
+            _driverPosition = LatLng(position.latitude, position.longitude);
+          });
+          _updateRouteToClient();
+        }
       } catch (e) {
-        print('Error sending location: $e');
+        print('❌ Error sending location: $e');
       }
     });
+  }
+
+  Future<void> _updateRouteToClient() async {
+    if (_driverPosition == null) return;
+    
+    final bloc = context.read<DriverHomeBloc>();
+    final state = bloc.state;
+    
+    if (state.currentMission == null) return;
+    
+    final originLocation = state.currentMission!['originLocation'];
+    if (originLocation == null) return;
+    
+    final coordinates = originLocation['coordinates'] as List?;
+    if (coordinates == null || coordinates.length < 2) return;
+    
+    final clientPos = LatLng(coordinates[1] as double, coordinates[0] as double);
+    
+    try {
+      final result = await DirectionsService.getDirections(
+        origin: _driverPosition!,
+        destination: clientPos,
+      );
+      
+      if (result != null && mounted) {
+        setState(() {
+          _eta = result.duration;
+          _distance = result.distance;
+          _polylines = {
+            Polyline(
+              polylineId: const PolylineId('route_to_client'),
+              points: result.polylinePoints,
+              color: const Color(0xFF2E7D32),
+              width: 5,
+            ),
+          };
+        });
+        print('🗺️ Ruta actualizada: $_distance, ETA: $_eta');
+      }
+    } catch (e) {
+      print('❌ Error obteniendo ruta: $e');
+    }
   }
 
   void _stopLocationUpdates() {
@@ -159,13 +257,16 @@ class _DriverHomeViewState extends State<_DriverHomeView> {
         // Obtener shiftId del turno activo o de la misión
         if (state.activeShift != null) {
           _currentShiftId = state.activeShift!['id'];
+          print('🔑 ShiftId from activeShift: $_currentShiftId');
         }
         // También puede venir del shift dentro de la misión
         if (state.currentMission != null) {
+          print('📋 Mission data: ${state.currentMission}');
           final requestDetails = state.currentMission!['requestDetails'] as Map<String, dynamic>?;
           final shiftData = requestDetails?['shift'] ?? state.currentMission!['shift'];
           if (shiftData != null && shiftData is Map<String, dynamic>) {
             _currentShiftId = shiftData['id'];
+            print('🔑 ShiftId from mission: $_currentShiftId');
           }
         }
       },
@@ -442,6 +543,32 @@ class _DriverHomeViewState extends State<_DriverHomeView> {
           ),
         ),
 
+        // ETA y distancia
+        if (_eta != null && _distance != null) 
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+            color: Colors.white,
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceAround,
+              children: [
+                Row(
+                  children: [
+                    const Icon(Icons.access_time, color: Color(0xFF2E7D32), size: 20),
+                    const SizedBox(width: 8),
+                    Text(_eta!, style: const TextStyle(fontWeight: FontWeight.bold)),
+                  ],
+                ),
+                Row(
+                  children: [
+                    const Icon(Icons.route, color: Color(0xFF2E7D32), size: 20),
+                    const SizedBox(width: 8),
+                    Text(_distance!, style: const TextStyle(fontWeight: FontWeight.bold)),
+                  ],
+                ),
+              ],
+            ),
+          ),
+
         // Mapa
         Expanded(
           child: coordinates != null
@@ -449,7 +576,7 @@ class _DriverHomeViewState extends State<_DriverHomeView> {
                   onMapCreated: (controller) => _mapController = controller,
                   initialCameraPosition: CameraPosition(
                     target: LatLng(coordinates[1], coordinates[0]),
-                    zoom: 15,
+                    zoom: 14,
                   ),
                   markers: {
                     Marker(
@@ -458,7 +585,17 @@ class _DriverHomeViewState extends State<_DriverHomeView> {
                       icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueRed),
                       infoWindow: InfoWindow(title: 'Cliente: $clientName'),
                     ),
+                    if (_driverPosition != null)
+                      Marker(
+                        markerId: const MarkerId('driver'),
+                        position: _driverPosition!,
+                        icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueBlue),
+                        infoWindow: const InfoWindow(title: 'Tu ubicación'),
+                      ),
                   },
+                  polylines: _polylines,
+                  myLocationEnabled: true,
+                  myLocationButtonEnabled: true,
                 )
               : const Center(child: Text('Ubicación no disponible')),
         ),
@@ -498,12 +635,14 @@ class _DriverHomeViewState extends State<_DriverHomeView> {
   }
 
   void _updateStatus(BuildContext context, String currentStatus) {
+    print('🔄 _updateStatus called with: $currentStatus, shiftId: $_currentShiftId');
     String? nextStatus;
     
     switch (currentStatus) {
       case 'ASSIGNED':
         nextStatus = 'ON_THE_WAY';
         // Iniciar envío de ubicación cuando va en camino
+        print('🚀 Iniciando envío de ubicación...');
         _startLocationUpdates();
         break;
       case 'ON_THE_WAY':

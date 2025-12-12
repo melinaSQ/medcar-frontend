@@ -38,11 +38,23 @@ class _CompanyHomeView extends StatefulWidget {
 class _CompanyHomeViewState extends State<_CompanyHomeView> {
   final SocketService _socketService = SocketService();
   StreamSubscription? _newRequestSub;
+  StreamSubscription? _statusUpdateSub;
+  Timer? _refreshTimer;
 
   @override
   void initState() {
     super.initState();
     _initWebSocket();
+    _startAutoRefresh();
+  }
+
+  void _startAutoRefresh() {
+    // Refrescar turnos activos cada 15 segundos
+    _refreshTimer = Timer.periodic(const Duration(seconds: 15), (timer) {
+      if (mounted) {
+        context.read<CompanyHomeBloc>().add(LoadActiveShiftsEvent());
+      }
+    });
   }
 
   Future<void> _initWebSocket() async {
@@ -67,12 +79,22 @@ class _CompanyHomeViewState extends State<_CompanyHomeView> {
           );
         }
       });
+
+      // Escuchar actualizaciones de estado (cuando conductor cambia estado)
+      _statusUpdateSub = _socketService.statusUpdateStream.listen((update) {
+        if (mounted) {
+          // Recargar turnos activos para ver el nuevo estado
+          context.read<CompanyHomeBloc>().add(LoadActiveShiftsEvent());
+        }
+      });
     }
   }
 
   @override
   void dispose() {
     _newRequestSub?.cancel();
+    _statusUpdateSub?.cancel();
+    _refreshTimer?.cancel();
     _socketService.disconnect();
     super.dispose();
   }
