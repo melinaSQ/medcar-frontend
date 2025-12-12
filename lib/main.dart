@@ -7,6 +7,7 @@ import 'package:medcar_frontend/dependency_injection.dart' as di;
 import 'package:medcar_frontend/src/presentation/pages/auth/login/login_page.dart';
 import 'package:medcar_frontend/src/presentation/pages/auth/register/register_page.dart';
 import 'package:medcar_frontend/src/presentation/pages/client/home/client_home_page.dart';
+import 'package:medcar_frontend/src/presentation/pages/client/map/client_map_page.dart';
 import 'package:medcar_frontend/src/presentation/pages/splash/splash_page.dart';
 
 void main() async {
@@ -31,6 +32,7 @@ class MyApp extends StatelessWidget {
           'login': (BuildContext context) => const LoginPage(),
           'register': (BuildContext context) => const RegisterPage(),
           'client/home': (BuildContext context) => const ClientHomePage(),
+          'client/map': (BuildContext context) => const ClientMapPage(),
         },
       ),
     );

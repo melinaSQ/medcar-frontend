@@ -44,6 +44,11 @@ dependencies:
   shared_preferences: ^2.3.2 
   flutter_bloc: ^9.1.0
   equatable: ^2.0.5
+  
+  # Para mapas y ubicación
+  google_maps_flutter: ^2.5.0
+  geolocator: ^10.1.0
+  permission_handler: ^11.1.0
 
 dev_dependencies:
   flutter_test:

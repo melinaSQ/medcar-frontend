@@ -1,3 +1,5 @@
+// ignore_for_file: deprecated_member_use
+
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:medcar_frontend/src/presentation/pages/client/home/bloc/client_home_bloc.dart';
@@ -92,13 +94,7 @@ class ClientHomeContent extends StatelessWidget {
   Widget _buildEmergencyButton(BuildContext context) {
     return GestureDetector(
       onTap: () {
-        // TODO: Implementar solicitud de ambulancia
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Funcionalidad de emergencia próximamente'),
-            backgroundColor: Color(0xFF652580),
-          ),
-        );
+        Navigator.pushNamed(context, 'client/map');
       },
       child: Container(
         width: 180,
