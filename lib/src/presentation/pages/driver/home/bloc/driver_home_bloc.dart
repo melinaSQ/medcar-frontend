@@ -107,9 +107,17 @@ class DriverHomeBloc extends Bloc<DriverHomeEvent, DriverHomeState> {
     try {
       final session = await authRepository.getUserSession();
       if (session != null) {
-        final requestId = state.currentMission!['id'];
+        // El ID puede venir directo o dentro de requestDetails
+        final mission = state.currentMission!;
+        final requestDetails = mission['requestDetails'] as Map<String, dynamic>?;
+        final requestId = requestDetails?['id'] ?? mission['id'];
+        
+        if (requestId == null) {
+          throw Exception('No se encontró el ID de la solicitud');
+        }
+        
         final updatedMission = await driverDataSource.updateRequestStatus(
-          requestId: requestId,
+          requestId: requestId is int ? requestId : int.parse(requestId.toString()),
           status: event.newStatus,
           token: session.accessToken,
         );

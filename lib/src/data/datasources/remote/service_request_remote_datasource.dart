@@ -26,6 +26,8 @@ abstract class ServiceRequestRemoteDataSource {
     required int shiftId,
     required String token,
   });
+
+  Future<Map<String, dynamic>?> getActiveRequest({required String token});
 }
 
 class ServiceRequestRemoteDataSourceImpl implements ServiceRequestRemoteDataSource {
@@ -129,6 +131,25 @@ class ServiceRequestRemoteDataSourceImpl implements ServiceRequestRemoteDataSour
     } else {
       final errorBody = json.decode(response.body);
       throw Exception(errorBody['message'] ?? 'Error al asignar solicitud');
+    }
+  }
+
+  @override
+  Future<Map<String, dynamic>?> getActiveRequest({required String token}) async {
+    final response = await client.get(
+      Uri.parse('$apiUrl/service-requests/my-active'),
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer $token',
+      },
+    );
+
+    if (response.statusCode == 200) {
+      final body = response.body;
+      if (body.isEmpty || body == 'null') return null;
+      return json.decode(body);
+    } else {
+      return null;
     }
   }
 }

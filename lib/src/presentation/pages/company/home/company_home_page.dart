@@ -1,10 +1,12 @@
 // lib/src/presentation/pages/company/home/company_home_page.dart
 
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:medcar_frontend/dependency_injection.dart';
 import 'package:medcar_frontend/src/data/datasources/remote/service_request_remote_datasource.dart';
 import 'package:medcar_frontend/src/data/datasources/remote/shifts_remote_datasource.dart';
+import 'package:medcar_frontend/src/data/services/socket_service.dart';
 import 'package:medcar_frontend/src/domain/repositories/auth_repository.dart';
 import 'bloc/company_home_bloc.dart';
 import 'bloc/company_home_event.dart';
@@ -26,8 +28,54 @@ class CompanyHomePage extends StatelessWidget {
   }
 }
 
-class _CompanyHomeView extends StatelessWidget {
+class _CompanyHomeView extends StatefulWidget {
   const _CompanyHomeView();
+
+  @override
+  State<_CompanyHomeView> createState() => _CompanyHomeViewState();
+}
+
+class _CompanyHomeViewState extends State<_CompanyHomeView> {
+  final SocketService _socketService = SocketService();
+  StreamSubscription? _newRequestSub;
+
+  @override
+  void initState() {
+    super.initState();
+    _initWebSocket();
+  }
+
+  Future<void> _initWebSocket() async {
+    final authRepo = sl<AuthRepository>();
+    final session = await authRepo.getUserSession();
+    
+    if (session != null) {
+      _socketService.connect(session.accessToken);
+      
+      // Escuchar nuevas solicitudes
+      _newRequestSub = _socketService.onNewServiceRequest.listen((data) {
+        if (mounted) {
+          // Recargar solicitudes pendientes
+          context.read<CompanyHomeBloc>().add(LoadPendingRequestsEvent());
+          
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('🚨 ¡Nueva solicitud de emergencia!'),
+              backgroundColor: Colors.red,
+              duration: Duration(seconds: 3),
+            ),
+          );
+        }
+      });
+    }
+  }
+
+  @override
+  void dispose() {
+    _newRequestSub?.cancel();
+    _socketService.disconnect();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {

@@ -156,8 +156,17 @@ class _DriverHomeViewState extends State<_DriverHomeView> {
             SnackBar(content: Text(state.errorMessage!), backgroundColor: Colors.red),
           );
         }
+        // Obtener shiftId del turno activo o de la misión
         if (state.activeShift != null) {
           _currentShiftId = state.activeShift!['id'];
+        }
+        // También puede venir del shift dentro de la misión
+        if (state.currentMission != null) {
+          final requestDetails = state.currentMission!['requestDetails'] as Map<String, dynamic>?;
+          final shiftData = requestDetails?['shift'] ?? state.currentMission!['shift'];
+          if (shiftData != null && shiftData is Map<String, dynamic>) {
+            _currentShiftId = shiftData['id'];
+          }
         }
       },
       builder: (context, state) {
@@ -174,7 +183,14 @@ class _DriverHomeViewState extends State<_DriverHomeView> {
                 icon: const Icon(Icons.swap_horiz, color: Colors.white),
                 tooltip: 'Cambiar rol',
                 onPressed: () {
-                  Navigator.pushReplacementNamed(context, 'roles');
+                  final driverState = context.read<DriverHomeBloc>().state;
+                  if (driverState.currentMission != null) {
+                    _showCannotChangeRoleDialog();
+                  } else if (driverState.activeShift != null) {
+                    _showEndShiftFirstDialog();
+                  } else {
+                    Navigator.pushReplacementNamed(context, 'roles');
+                  }
                 },
               ),
               IconButton(
@@ -361,13 +377,16 @@ class _DriverHomeViewState extends State<_DriverHomeView> {
     final mission = state.currentMission;
     if (mission == null) return _buildHasShiftView(context, state);
 
-    final client = mission['client'] as Map<String, dynamic>?;
+    // Los datos pueden venir directos o dentro de requestDetails (desde WebSocket)
+    final requestDetails = mission['requestDetails'] as Map<String, dynamic>? ?? mission;
+    
+    final client = requestDetails['client'] as Map<String, dynamic>?;
     final clientName = client != null ? '${client['name']} ${client['lastname']}' : 'Cliente';
     final clientPhone = client?['phone'] ?? 'N/A';
-    final emergencyType = mission['emergencyType'] ?? 'N/A';
-    final description = mission['originDescription'] ?? 'Sin descripción';
-    final status = mission['status'] ?? 'ASSIGNED';
-    final location = mission['originLocation'] as Map<String, dynamic>?;
+    final emergencyType = requestDetails['emergencyType'] ?? 'N/A';
+    final description = requestDetails['originDescription'] ?? 'Sin descripción';
+    final status = requestDetails['status'] ?? 'ASSIGNED';
+    final location = requestDetails['originLocation'] as Map<String, dynamic>?;
     final coordinates = location?['coordinates'] as List<dynamic>?;
 
     return Column(
@@ -484,6 +503,8 @@ class _DriverHomeViewState extends State<_DriverHomeView> {
     switch (currentStatus) {
       case 'ASSIGNED':
         nextStatus = 'ON_THE_WAY';
+        // Iniciar envío de ubicación cuando va en camino
+        _startLocationUpdates();
         break;
       case 'ON_THE_WAY':
         nextStatus = 'ON_SITE';
@@ -581,6 +602,63 @@ class _DriverHomeViewState extends State<_DriverHomeView> {
             },
             style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
             child: const Text('Finalizar', style: TextStyle(color: Colors.white)),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showCannotChangeRoleDialog() {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Row(
+          children: [
+            Icon(Icons.warning_amber, color: Colors.red),
+            SizedBox(width: 10),
+            Text('Misión Activa'),
+          ],
+        ),
+        content: const Text(
+          'No puedes cambiar de rol mientras tienes una emergencia activa.\n\n'
+          'Completa la emergencia actual antes de cambiar de rol.',
+        ),
+        actions: [
+          ElevatedButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Entendido'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showEndShiftFirstDialog() {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Row(
+          children: [
+            Icon(Icons.info_outline, color: Colors.orange),
+            SizedBox(width: 10),
+            Text('Turno Activo'),
+          ],
+        ),
+        content: const Text(
+          'Debes finalizar tu turno antes de cambiar de rol.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancelar'),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              Navigator.pop(context);
+              _showEndShiftDialog(context);
+            },
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.orange),
+            child: const Text('Finalizar Turno', style: TextStyle(color: Colors.white)),
           ),
         ],
       ),
