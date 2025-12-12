@@ -1,4 +1,4 @@
-// ignore_for_file: use_key_in_widget_constructors, must_be_immutable, avoid_print
+// ignore_for_file: use_key_in_widget_constructors, must_be_immutable
 
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
@@ -122,16 +122,11 @@ class LoginContent extends StatelessWidget {
       
                   DefaultButton(
                     text: 'Iniciar Sesión',
-                    //color: Color(0xAA4b4949),
                     color: Color(0xFF6041a2),
                     textColor: Colors.white,
-      
                     onPressed: () {
-                      // Acción al presionar el botón
-                      if (state.formKey!.currentState!.validate()) {
+                      if (state.formKey?.currentState?.validate() ?? false) {
                         context.read<LoginBloc>().add(FormSubmit());
-                      } else {
-                        print('El formulario no es valido');
                       }
                     },
                   ),

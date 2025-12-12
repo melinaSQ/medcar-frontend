@@ -5,7 +5,9 @@ import 'package:http/http.dart' as http;
 import 'package:medcar_frontend/src/data/models/auth_response_model.dart';
 
 // Define la URL base de tu API
-const String apiUrl = 'http://192.168.1.7:3000'; // ¡USA TU IP LOCAL!
+// Para emulador Android usa: http://10.0.2.2:3000
+// Para dispositivo físico usa tu IP local: http://192.168.x.x:3000
+const String apiUrl = 'http://10.0.2.2:3000';
 
 abstract class AuthRemoteDataSource {
   Future<AuthResponseModel> login(String email, String password);
@@ -43,7 +45,6 @@ class AuthRemoteDataSourceImpl implements AuthRemoteDataSource {
     if (response.statusCode == 201) {
       return AuthResponseModel.fromJson(json.decode(response.body));
     } else {
-      // Aquí puedes manejar errores específicos, como el 409 Conflict
       throw Exception('Failed to register: ${response.body}');
     }
   }

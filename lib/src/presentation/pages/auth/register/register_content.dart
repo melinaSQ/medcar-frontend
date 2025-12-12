@@ -168,9 +168,8 @@ class RegisterContent extends StatelessWidget {
                         //****boton de registrase */
                         DefaultButton(
                           onPressed: () {
-                            if (state.formKey!.currentState!.validate()) {
+                            if (state.formKey?.currentState?.validate() ?? false) {
                               context.read<RegisterBloc>().add(FormSubmit());
-                              context.read<RegisterBloc>().add(FormReset());
                             }
                           },
                           text: 'Crear usuario',

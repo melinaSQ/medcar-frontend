@@ -34,3 +34,6 @@ class UpdateNotificationToken extends LoginEvent {
 
 //evento para enviar el formulario
 class FormSubmit extends LoginEvent {}
+
+//evento para resetear el estado del formulario
+class ResetFormStatus extends LoginEvent {}

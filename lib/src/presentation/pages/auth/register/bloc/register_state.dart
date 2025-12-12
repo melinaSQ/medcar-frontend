@@ -52,7 +52,7 @@ class RegisterState extends Equatable {
       phone: phone ?? this.phone,
       password: password ?? this.password,
       confirmPassword: confirmPassword ?? this.confirmPassword,
-      formKey: formKey,
+      formKey: formKey ?? this.formKey,  // Ahora mantiene el formKey si no se pasa uno nuevo
       //response: response
     );
   } 
