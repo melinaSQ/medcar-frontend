@@ -13,6 +13,11 @@ abstract class ServiceRequestRemoteDataSource {
     String? originDescription,
     required String token,
   });
+
+  Future<void> cancelServiceRequest({
+    required int requestId,
+    required String token,
+  });
 }
 
 class ServiceRequestRemoteDataSourceImpl implements ServiceRequestRemoteDataSource {
@@ -52,6 +57,25 @@ class ServiceRequestRemoteDataSourceImpl implements ServiceRequestRemoteDataSour
     } else {
       final errorBody = json.decode(response.body);
       throw Exception(errorBody['message'] ?? 'Error al crear la solicitud');
+    }
+  }
+
+  @override
+  Future<void> cancelServiceRequest({
+    required int requestId,
+    required String token,
+  }) async {
+    final response = await client.patch(
+      Uri.parse('$apiUrl/service-requests/$requestId/cancel'),
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer $token',
+      },
+    );
+
+    if (response.statusCode != 200 && response.statusCode != 204) {
+      final errorBody = json.decode(response.body);
+      throw Exception(errorBody['message'] ?? 'Error al cancelar la solicitud');
     }
   }
 }

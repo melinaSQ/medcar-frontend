@@ -6,6 +6,7 @@ import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:medcar_frontend/dependency_injection.dart';
 import 'package:medcar_frontend/src/data/services/socket_service.dart';
 import 'package:medcar_frontend/src/domain/repositories/auth_repository.dart';
+import 'package:medcar_frontend/src/domain/repositories/service_request_repository.dart';
 
 class RequestTrackingPage extends StatefulWidget {
   final double userLat;
@@ -31,6 +32,7 @@ class _RequestTrackingPageState extends State<RequestTrackingPage> {
   String _statusMessage = 'Buscando ambulancia disponible...';
   LatLng? _ambulancePosition;
   bool _isConnected = false;
+  bool _isCanceling = false;
   
   Set<Marker> _markers = {};
   Set<Polyline> _polylines = {};
@@ -218,6 +220,58 @@ class _RequestTrackingPageState extends State<RequestTrackingPage> {
     );
   }
 
+  Future<void> _cancelRequest() async {
+    if (widget.requestId == null) return;
+
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('¿Cancelar solicitud?'),
+        content: const Text(
+          '¿Estás seguro de que deseas cancelar esta solicitud de ambulancia?',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('No'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(context, true),
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+            child: const Text('Sí, cancelar', style: TextStyle(color: Colors.white)),
+          ),
+        ],
+      ),
+    );
+
+    if (confirm != true) return;
+
+    setState(() => _isCanceling = true);
+
+    try {
+      final repository = sl<ServiceRequestRepository>();
+      await repository.cancelServiceRequest(requestId: widget.requestId!);
+      
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Solicitud cancelada exitosamente'),
+            backgroundColor: Colors.green,
+          ),
+        );
+        Navigator.pop(context);
+      }
+    } catch (e) {
+      if (mounted) {
+        _showError('Error al cancelar: ${e.toString().replaceAll('Exception: ', '')}');
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _isCanceling = false);
+      }
+    }
+  }
+
   void _showSnackBar(String message) {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
@@ -339,9 +393,40 @@ class _RequestTrackingPageState extends State<RequestTrackingPage> {
           
           // Barra de progreso
           _buildProgressBar(),
+
+          // Botón de cancelar (solo visible en estados que permiten cancelación)
+          if (_canCancel()) ...[
+            const SizedBox(height: 16),
+            SizedBox(
+              width: double.infinity,
+              child: OutlinedButton.icon(
+                onPressed: _isCanceling ? null : _cancelRequest,
+                icon: _isCanceling
+                    ? const SizedBox(
+                        width: 16,
+                        height: 16,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : const Icon(Icons.cancel, color: Colors.red),
+                label: Text(
+                  _isCanceling ? 'Cancelando...' : 'Cancelar solicitud',
+                  style: TextStyle(color: _isCanceling ? Colors.grey : Colors.red),
+                ),
+                style: OutlinedButton.styleFrom(
+                  side: BorderSide(color: _isCanceling ? Colors.grey : Colors.red),
+                  padding: const EdgeInsets.symmetric(vertical: 12),
+                ),
+              ),
+            ),
+          ],
         ],
       ),
     );
+  }
+
+  bool _canCancel() {
+    // Solo permite cancelar cuando está buscando o recién asignado
+    return _currentStatus == 'SEARCHING' || _currentStatus == 'ASSIGNED';
   }
 
   Widget _buildStatusIcon() {

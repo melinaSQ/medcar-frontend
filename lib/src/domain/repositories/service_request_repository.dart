@@ -9,5 +9,7 @@ abstract class ServiceRequestRepository {
     required double longitude,
     String? originDescription,
   });
+
+  Future<void> cancelServiceRequest({required int requestId});
 }
 

@@ -21,7 +21,6 @@ class ServiceRequestRepositoryImpl implements ServiceRequestRepository {
     required double longitude,
     String? originDescription,
   }) async {
-    // Obtener el token de la sesión actual
     final session = await authRepository.getUserSession();
     if (session == null) {
       throw Exception('No hay sesión activa');
@@ -32,6 +31,19 @@ class ServiceRequestRepositoryImpl implements ServiceRequestRepository {
       latitude: latitude,
       longitude: longitude,
       originDescription: originDescription,
+      token: session.accessToken,
+    );
+  }
+
+  @override
+  Future<void> cancelServiceRequest({required int requestId}) async {
+    final session = await authRepository.getUserSession();
+    if (session == null) {
+      throw Exception('No hay sesión activa');
+    }
+
+    await remoteDataSource.cancelServiceRequest(
+      requestId: requestId,
       token: session.accessToken,
     );
   }
