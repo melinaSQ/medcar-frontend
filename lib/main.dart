@@ -7,6 +7,7 @@ import 'package:medcar_frontend/dependency_injection.dart' as di;
 import 'package:medcar_frontend/src/presentation/pages/auth/login/login_page.dart';
 import 'package:medcar_frontend/src/presentation/pages/auth/register/register_page.dart';
 import 'package:medcar_frontend/src/presentation/pages/client/home/client_home_page.dart';
+import 'package:medcar_frontend/src/presentation/pages/splash/splash_page.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -24,8 +25,9 @@ class MyApp extends StatelessWidget {
       child: MaterialApp(
         debugShowCheckedModeBanner: false,
         title: 'MedCar App',
-        initialRoute: 'login',
+        initialRoute: 'splash',
         routes: {
+          'splash': (BuildContext context) => const SplashPage(),
           'login': (BuildContext context) => const LoginPage(),
           'register': (BuildContext context) => const RegisterPage(),
           'client/home': (BuildContext context) => const ClientHomePage(),
