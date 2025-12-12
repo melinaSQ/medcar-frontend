@@ -16,13 +16,14 @@ class UserModel extends UserEntity {
   // Factory constructor para crear una instancia desde un JSON
   factory UserModel.fromJson(Map<String, dynamic> json) {
     return UserModel(
-      id: json["id"],
-      name: json["name"],
-      lastname: json["lastname"],
-      email: json["email"],
-      phone: json["phone"],
-      // Corrección para los roles: convierte una lista de cualquier tipo a una lista de Strings
-      roles: List<String>.from(json["roles"].map((x) => x.toString())),
+      id: json["id"] ?? 0,
+      name: json["name"] ?? '',
+      lastname: json["lastname"] ?? '',
+      email: json["email"] ?? '',
+      phone: json["phone"] ?? '',
+      roles: json["roles"] != null 
+          ? List<String>.from(json["roles"].map((x) => x.toString()))
+          : [],
     );
   }
 

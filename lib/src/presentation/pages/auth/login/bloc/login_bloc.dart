@@ -5,6 +5,7 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:medcar_frontend/src/domain/usecases/login_usecase.dart';
 import 'package:medcar_frontend/src/presentation/pages/auth/login/bloc/login_event.dart';
 import 'package:medcar_frontend/src/presentation/pages/auth/login/bloc/login_state.dart';
+import 'package:medcar_frontend/src/presentation/utils/bloc_from_item.dart';
 
 class LoginBloc extends Bloc<LoginEvent, LoginState> {
   final LoginUseCase loginUseCase;
@@ -42,6 +43,16 @@ class LoginBloc extends Bloc<LoginEvent, LoginState> {
 
     on<ResetFormStatus>((event, emit) {
       emit(state.copyWith(formStatus: FormStatus.initial));
+    });
+
+    on<ResetLoginForm>((event, emit) {
+      // Crear un nuevo formKey para forzar la reconstrucción del formulario
+      emit(LoginState(
+        formKey: GlobalKey<FormState>(),
+        email: const BlocFormItem(error: 'Ingresa el email'),
+        password: const BlocFormItem(error: 'Ingresa el password'),
+        formStatus: FormStatus.initial,
+      ));
     });
   }
 }

@@ -13,19 +13,21 @@ class DefaultTextField extends StatelessWidget {
   Color backgroundColor;
   TextInputType keyboardType;
   bool obscureText;
+  TextEditingController? controller;
 
-  DefaultTextField(
-      {super.key,
-      required this.text,
-      required this.icon,
-      required this.onChanged,
-      this.margin = const EdgeInsets.only(top: 20, left: 20, right: 20),
-      this.validator,
-      this.backgroundColor = Colors.white,
-      //this.backgroundColor = const Color.fromARGB(255, 219, 216, 216),
-      this.initialValue,
-      this.keyboardType = TextInputType.text,
-      this.obscureText = false});
+  DefaultTextField({
+    super.key,
+    required this.text,
+    required this.icon,
+    required this.onChanged,
+    this.margin = const EdgeInsets.only(top: 20, left: 20, right: 20),
+    this.validator,
+    this.backgroundColor = Colors.white,
+    this.initialValue,
+    this.keyboardType = TextInputType.text,
+    this.obscureText = false,
+    this.controller,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -40,12 +42,13 @@ class DefaultTextField extends StatelessWidget {
             bottomRight: Radius.circular(15),
           )),
       child: TextFormField(
+        controller: controller,
         onChanged: (text) {
           onChanged(text);
         },
         obscureText: obscureText,
         style: TextStyle(fontSize: 14),
-        initialValue: initialValue,
+        initialValue: controller == null ? initialValue : null,
         validator: validator,
         keyboardType: keyboardType,
         decoration: InputDecoration(
@@ -55,9 +58,7 @@ class DefaultTextField extends StatelessWidget {
             ),
             border: InputBorder.none,
             prefixIcon: Container(
-              //margin: EdgeInsets.only(top: 12),
               margin: EdgeInsets.all(15),
-              //padding: EdgeInsets.all(12),
               child: Wrap(
                 alignment: WrapAlignment.spaceEvenly,
                 children: [

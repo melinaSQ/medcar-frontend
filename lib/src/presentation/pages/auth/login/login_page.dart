@@ -5,8 +5,22 @@ import 'package:medcar_frontend/src/presentation/pages/auth/login/bloc/login_eve
 import 'package:medcar_frontend/src/presentation/pages/auth/login/bloc/login_state.dart';
 import 'package:medcar_frontend/src/presentation/pages/auth/login/login_content.dart';
 
-class LoginPage extends StatelessWidget {
+class LoginPage extends StatefulWidget {
   const LoginPage({super.key});
+
+  @override
+  State<LoginPage> createState() => _LoginPageState();
+}
+
+class _LoginPageState extends State<LoginPage> {
+  @override
+  void initState() {
+    super.initState();
+    // Limpiar el formulario cuando se muestra la página de login
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      context.read<LoginBloc>().add(ResetLoginForm());
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -14,16 +28,13 @@ class LoginPage extends StatelessWidget {
       body: BlocListener<LoginBloc, LoginState>(
         listener: (context, state) {
           if (state.formStatus == FormStatus.success) {
-            // Resetear el estado antes de navegar
             context.read<LoginBloc>().add(ResetFormStatus());
-            // Navegar a la página principal del cliente
             Navigator.pushNamedAndRemoveUntil(
               context, 
               'client/home', 
               (route) => false,
             );
           } else if (state.formStatus == FormStatus.failure) {
-            // Mostrar error
             ScaffoldMessenger.of(context).showSnackBar(
               SnackBar(
                 content: Text(state.errorMessage ?? 'Error al iniciar sesión'),
