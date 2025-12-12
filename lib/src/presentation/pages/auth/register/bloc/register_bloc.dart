@@ -80,8 +80,14 @@ class RegisterBloc extends Bloc<RegisterEvent, RegisterState> {
 
     on<FormSubmit>((event, emit) async {
       if (state.password.value != state.confirmPassword.value) {
+        emit(state.copyWith(
+          formStatus: RegisterFormStatus.failure,
+          errorMessage: 'Las contraseñas no coinciden',
+        ));
         return; 
       }
+
+      emit(state.copyWith(formStatus: RegisterFormStatus.loading));
 
       try {
         await registerUseCase.call(
@@ -91,14 +97,21 @@ class RegisterBloc extends Bloc<RegisterEvent, RegisterState> {
           phone: state.phone.value,
           password: state.password.value,
         );
-        // TODO: Emitir estado de éxito y navegar
+        emit(state.copyWith(formStatus: RegisterFormStatus.success));
       } catch (e) {
-        // TODO: Emitir estado de error y mostrar mensaje
+        emit(state.copyWith(
+          formStatus: RegisterFormStatus.failure,
+          errorMessage: e.toString(),
+        ));
       }
     });
 
     on<FormReset>((event, emit) {
       state.formKey?.currentState?.reset();
+    });
+
+    on<ResetFormStatus>((event, emit) {
+      emit(state.copyWith(formStatus: RegisterFormStatus.initial));
     });
   }
 }

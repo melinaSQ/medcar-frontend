@@ -1,11 +1,12 @@
 // lib/src/data/repositories/auth_repository_impl.dart
 
+import 'dart:convert';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../../domain/entities/auth_response_entity.dart';
 import '../../domain/repositories/auth_repository.dart';
 import '../datasources/remote/auth_remote_datasource.dart';
 
-const String _tokenKey = 'auth_token';
+const String _sessionKey = 'user_session';
 
 class AuthRepositoryImpl implements AuthRepository {
   final AuthRemoteDataSource remoteDataSource;
@@ -16,11 +17,10 @@ class AuthRepositoryImpl implements AuthRepository {
   Future<AuthResponseEntity> login(String email, String password) async {
     try {
       final authResponse = await remoteDataSource.login(email, password);
-      // Después de un login exitoso, guarda el token
-      await saveToken(authResponse.accessToken);
+      await saveUserSession(authResponse);
       return authResponse;
     } catch (e) {
-      rethrow; // Propaga el error para que la capa de presentación lo maneje
+      rethrow;
     }
   }
 
@@ -28,31 +28,35 @@ class AuthRepositoryImpl implements AuthRepository {
   Future<AuthResponseEntity> register(Map<String, dynamic> userData) async {
     try {
       final authResponse = await remoteDataSource.register(userData);
-      // Después de un registro exitoso, guarda el token
-      await saveToken(authResponse.accessToken);
+      await saveUserSession(authResponse);
       return authResponse;
     } catch (e) {
       rethrow;
     }
   }
 
-  // --- Implementación del manejo del token local ---
+  // --- Implementación del manejo de la sesión local ---
 
   @override
-  Future<void> saveToken(String token) async {
+  Future<void> saveUserSession(AuthResponseEntity authResponse) async {
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setString(_tokenKey, token);
+    final sessionJson = json.encode(authResponse.toJson());
+    await prefs.setString(_sessionKey, sessionJson);
   }
 
   @override
-  Future<String?> getToken() async {
+  Future<AuthResponseEntity?> getUserSession() async {
     final prefs = await SharedPreferences.getInstance();
-    return prefs.getString(_tokenKey);
+    final sessionJson = prefs.getString(_sessionKey);
+    if (sessionJson == null) return null;
+    
+    final sessionMap = json.decode(sessionJson) as Map<String, dynamic>;
+    return AuthResponseEntity.fromJson(sessionMap);
   }
 
   @override
   Future<void> logout() async {
     final prefs = await SharedPreferences.getInstance();
-    await prefs.remove(_tokenKey);
+    await prefs.remove(_sessionKey);
   }
 }

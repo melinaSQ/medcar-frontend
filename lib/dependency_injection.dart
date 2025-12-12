@@ -7,6 +7,7 @@ import 'package:medcar_frontend/src/domain/usecases/login_usecase.dart';
 import 'package:medcar_frontend/src/domain/usecases/register_usecase.dart';
 import 'package:medcar_frontend/src/presentation/pages/auth/login/bloc/login_bloc.dart';
 import 'package:medcar_frontend/src/presentation/pages/auth/register/bloc/register_bloc.dart';
+import 'package:medcar_frontend/src/presentation/pages/client/home/bloc/client_home_bloc.dart';
 
 final sl = GetIt.instance;
 
@@ -14,6 +15,7 @@ Future<void> init() async {
   // Blocs
   sl.registerFactory(() => LoginBloc(loginUseCase: sl()));
   sl.registerFactory(() => RegisterBloc(registerUseCase: sl()));
+  sl.registerFactory(() => ClientHomeBloc(authRepository: sl()));
 
   // Use Cases
   sl.registerFactory(() => LoginUseCase(sl()));

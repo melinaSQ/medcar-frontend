@@ -18,7 +18,6 @@ class _RegisterPageState extends State<RegisterPage> {
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    // Dispara el evento para inicializar el formKey solo una vez
     if (!_initialized) {
       context.read<RegisterBloc>().add(RegisterInitEvent());
       _initialized = true;
@@ -28,10 +27,41 @@ class _RegisterPageState extends State<RegisterPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      body: BlocBuilder<RegisterBloc, RegisterState>(
-        builder: (context, state) {
-          return RegisterContent(state);
+      body: BlocListener<RegisterBloc, RegisterState>(
+        listener: (context, state) {
+          if (state.formStatus == RegisterFormStatus.success) {
+            context.read<RegisterBloc>().add(ResetFormStatus());
+            Navigator.pushNamedAndRemoveUntil(
+              context, 
+              'client/home', 
+              (route) => false,
+            );
+          } else if (state.formStatus == RegisterFormStatus.failure) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text(state.errorMessage ?? 'Error al registrar'),
+                backgroundColor: Colors.red,
+              ),
+            );
+            context.read<RegisterBloc>().add(ResetFormStatus());
+          }
         },
+        child: BlocBuilder<RegisterBloc, RegisterState>(
+          builder: (context, state) {
+            return Stack(
+              children: [
+                RegisterContent(state),
+                if (state.formStatus == RegisterFormStatus.loading)
+                  Container(
+                    color: Colors.black.withOpacity(0.5),
+                    child: const Center(
+                      child: CircularProgressIndicator(color: Colors.white),
+                    ),
+                  ),
+              ],
+            );
+          },
+        ),
       ),
     );
   }

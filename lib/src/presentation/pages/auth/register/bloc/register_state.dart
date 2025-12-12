@@ -2,8 +2,9 @@ import 'package:equatable/equatable.dart';
 import 'package:flutter/material.dart';
 import 'package:medcar_frontend/src/presentation/utils/bloc_from_item.dart';
 
-class RegisterState extends Equatable {
+enum RegisterFormStatus { initial, loading, success, failure }
 
+class RegisterState extends Equatable {
   final BlocFormItem name;
   final BlocFormItem lastname;
   final BlocFormItem email;
@@ -11,7 +12,8 @@ class RegisterState extends Equatable {
   final BlocFormItem password;
   final BlocFormItem confirmPassword;
   final GlobalKey<FormState>? formKey;
-  //final Resource? response;
+  final RegisterFormStatus formStatus;
+  final String? errorMessage;
 
   const RegisterState({
     this.name = const BlocFormItem(error: 'Ingresa el nombre'),
@@ -21,19 +23,9 @@ class RegisterState extends Equatable {
     this.password = const BlocFormItem(error: 'Ingresa el password'),
     this.confirmPassword = const BlocFormItem(error: 'Confirma la contraseña'),
     this.formKey,
-    //this.response
+    this.formStatus = RegisterFormStatus.initial,
+    this.errorMessage,
   });
-
-/*
-  //metodo que devuleve la instancia de un usuario
-  toUser() => User(
-    name: name.value, 
-    lastname: lastname.value, 
-    email: email.value, 
-    phone: phone.value, 
-    password: password.value
-  );
-  */
 
   RegisterState copyWith({
     BlocFormItem? name,
@@ -43,7 +35,8 @@ class RegisterState extends Equatable {
     BlocFormItem? password,
     BlocFormItem? confirmPassword,
     GlobalKey<FormState>? formKey,
-    //Resource? response
+    RegisterFormStatus? formStatus,
+    String? errorMessage,
   }) {
     return RegisterState(
       name: name ?? this.name,
@@ -52,12 +45,12 @@ class RegisterState extends Equatable {
       phone: phone ?? this.phone,
       password: password ?? this.password,
       confirmPassword: confirmPassword ?? this.confirmPassword,
-      formKey: formKey ?? this.formKey,  // Ahora mantiene el formKey si no se pasa uno nuevo
-      //response: response
+      formKey: formKey ?? this.formKey,
+      formStatus: formStatus ?? this.formStatus,
+      errorMessage: errorMessage,
     );
-  } 
+  }
 
   @override
-  List<Object?> get props => [name, lastname, email, phone, password, confirmPassword, /*response*/];
-
+  List<Object?> get props => [name, lastname, email, phone, password, confirmPassword, formStatus, errorMessage];
 }

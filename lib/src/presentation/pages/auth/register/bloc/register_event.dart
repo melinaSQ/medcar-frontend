@@ -38,3 +38,4 @@ class ConfirmPasswordChanged extends RegisterInitEvent {
 
 class FormSubmit extends RegisterEvent {}
 class FormReset extends RegisterEvent {}
+class ResetFormStatus extends RegisterEvent {}
