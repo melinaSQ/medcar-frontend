@@ -367,14 +367,54 @@ class _CompanyHomeViewState extends State<_CompanyHomeView> {
     final plate = ambulance?['plate'] ?? 'N/A';
     final type = ambulance?['type'] ?? 'N/A';
     final driverName = driver != null ? '${driver['name']} ${driver['lastname']}' : 'Sin conductor';
+    final hasActiveEmergency = shift['hasActiveEmergency'] == true;
+    final emergencyStatus = shift['emergencyStatus'] as String?;
+
+    // Determinar color y texto según el estado
+    Color statusColor;
+    String statusText;
+    IconData statusIcon;
+
+    if (hasActiveEmergency) {
+      switch (emergencyStatus) {
+        case 'ASSIGNED':
+          statusColor = Colors.blue;
+          statusText = 'ASIGNADO';
+          statusIcon = Icons.assignment;
+          break;
+        case 'ON_THE_WAY':
+          statusColor = Colors.orange;
+          statusText = 'EN CAMINO';
+          statusIcon = Icons.directions_car;
+          break;
+        case 'ON_SITE':
+          statusColor = Colors.purple;
+          statusText = 'EN LUGAR';
+          statusIcon = Icons.location_on;
+          break;
+        case 'TRAVELLING':
+          statusColor = Colors.red;
+          statusText = 'TRASLADO';
+          statusIcon = Icons.local_hospital;
+          break;
+        default:
+          statusColor = Colors.red;
+          statusText = 'EN SERVICIO';
+          statusIcon = Icons.emergency;
+      }
+    } else {
+      statusColor = Colors.green;
+      statusText = 'DISPONIBLE';
+      statusIcon = Icons.check_circle;
+    }
 
     return Card(
       margin: const EdgeInsets.only(bottom: 12),
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
       child: ListTile(
         leading: CircleAvatar(
-          backgroundColor: const Color(0xFF1E3A5F),
-          child: const Icon(Icons.local_shipping, color: Colors.white),
+          backgroundColor: hasActiveEmergency ? statusColor : const Color(0xFF1E3A5F),
+          child: Icon(hasActiveEmergency ? statusIcon : Icons.local_shipping, color: Colors.white),
         ),
         title: Text(plate, style: const TextStyle(fontWeight: FontWeight.bold)),
         subtitle: Column(
@@ -387,12 +427,12 @@ class _CompanyHomeViewState extends State<_CompanyHomeView> {
         trailing: Container(
           padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
           decoration: BoxDecoration(
-            color: Colors.green,
+            color: statusColor,
             borderRadius: BorderRadius.circular(8),
           ),
-          child: const Text(
-            'ACTIVO',
-            style: TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold),
+          child: Text(
+            statusText,
+            style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold),
           ),
         ),
       ),
