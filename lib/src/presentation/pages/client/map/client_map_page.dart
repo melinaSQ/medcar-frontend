@@ -263,7 +263,7 @@ class _ClientMapPageState extends State<ClientMapPage> {
     try {
       final useCase = sl<CreateServiceRequestUseCase>();
       
-      await useCase.call(
+      final response = await useCase.call(
         emergencyType: _selectedEmergencyType,
         latitude: _selectedPosition!.latitude,
         longitude: _selectedPosition!.longitude,
@@ -275,20 +275,16 @@ class _ClientMapPageState extends State<ClientMapPage> {
       _descriptionController.clear();
       
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('✅ Solicitud enviada. Una ambulancia está en camino.'),
-            backgroundColor: Color(0xFF652580),
-            duration: Duration(seconds: 4),
-          ),
+        // Navegar a la pantalla de seguimiento
+        Navigator.pushReplacementNamed(
+          context,
+          'client/tracking',
+          arguments: {
+            'userLat': _selectedPosition!.latitude,
+            'userLng': _selectedPosition!.longitude,
+            'requestId': response['id'],
+          },
         );
-        
-        // Volver a la página principal después de un momento
-        Future.delayed(const Duration(seconds: 2), () {
-          if (mounted) {
-            Navigator.pop(context);
-          }
-        });
       }
     } catch (e) {
       if (mounted) {

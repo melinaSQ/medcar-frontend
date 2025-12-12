@@ -8,6 +8,7 @@ import 'package:medcar_frontend/src/presentation/pages/auth/login/login_page.dar
 import 'package:medcar_frontend/src/presentation/pages/auth/register/register_page.dart';
 import 'package:medcar_frontend/src/presentation/pages/client/home/client_home_page.dart';
 import 'package:medcar_frontend/src/presentation/pages/client/map/client_map_page.dart';
+import 'package:medcar_frontend/src/presentation/pages/client/tracking/request_tracking_page.dart';
 import 'package:medcar_frontend/src/presentation/pages/splash/splash_page.dart';
 
 void main() async {
@@ -33,6 +34,20 @@ class MyApp extends StatelessWidget {
           'register': (BuildContext context) => const RegisterPage(),
           'client/home': (BuildContext context) => const ClientHomePage(),
           'client/map': (BuildContext context) => const ClientMapPage(),
+        },
+        onGenerateRoute: (settings) {
+          // Ruta con parámetros para tracking
+          if (settings.name == 'client/tracking') {
+            final args = settings.arguments as Map<String, dynamic>;
+            return MaterialPageRoute(
+              builder: (context) => RequestTrackingPage(
+                userLat: args['userLat'],
+                userLng: args['userLng'],
+                requestId: args['requestId'],
+              ),
+            );
+          }
+          return null;
         },
       ),
     );
