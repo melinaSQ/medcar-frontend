@@ -39,7 +39,13 @@ class _CompanyHomeViewState extends State<_CompanyHomeView> {
   final SocketService _socketService = SocketService();
   StreamSubscription? _newRequestSub;
   StreamSubscription? _statusUpdateSub;
+  StreamSubscription? _requestAssignedSub;
+  StreamSubscription? _locationUpdateSub;
+  StreamSubscription? _requestCanceledSub;
   Timer? _refreshTimer;
+  
+  // Para evitar múltiples refreshes seguidos
+  DateTime? _lastShiftRefresh;
 
   @override
   void initState() {
@@ -49,12 +55,23 @@ class _CompanyHomeViewState extends State<_CompanyHomeView> {
   }
 
   void _startAutoRefresh() {
-    // Refrescar turnos activos cada 15 segundos
-    _refreshTimer = Timer.periodic(const Duration(seconds: 15), (timer) {
+    // Refrescar turnos activos cada 10 segundos
+    _refreshTimer = Timer.periodic(const Duration(seconds: 10), (timer) {
       if (mounted) {
-        context.read<CompanyHomeBloc>().add(LoadActiveShiftsEvent());
+        _refreshShifts();
       }
     });
+  }
+  
+  void _refreshShifts() {
+    // Evitar múltiples refreshes en menos de 3 segundos
+    final now = DateTime.now();
+    if (_lastShiftRefresh != null && 
+        now.difference(_lastShiftRefresh!).inSeconds < 3) {
+      return;
+    }
+    _lastShiftRefresh = now;
+    context.read<CompanyHomeBloc>().add(LoadActiveShiftsEvent());
   }
 
   Future<void> _initWebSocket() async {
@@ -83,8 +100,45 @@ class _CompanyHomeViewState extends State<_CompanyHomeView> {
       // Escuchar actualizaciones de estado (cuando conductor cambia estado)
       _statusUpdateSub = _socketService.statusUpdateStream.listen((update) {
         if (mounted) {
+          print('📊 Admin: Estado actualizado - ${update.status}');
           // Recargar turnos activos para ver el nuevo estado
-          context.read<CompanyHomeBloc>().add(LoadActiveShiftsEvent());
+          _refreshShifts();
+          // También recargar solicitudes pendientes por si una se completó
+          context.read<CompanyHomeBloc>().add(LoadPendingRequestsEvent());
+        }
+      });
+      
+      // Escuchar cuando se asigna una solicitud
+      _requestAssignedSub = _socketService.requestAssignedStream.listen((update) {
+        if (mounted) {
+          print('📊 Admin: Solicitud asignada - ${update.status}');
+          _refreshShifts();
+          context.read<CompanyHomeBloc>().add(LoadPendingRequestsEvent());
+        }
+      });
+      
+      // Escuchar actualizaciones de ubicación (indica actividad de turnos)
+      _locationUpdateSub = _socketService.ambulanceLocationStream.listen((location) {
+        // Solo refrescar cada cierto tiempo para no sobrecargar
+        if (mounted) {
+          _refreshShifts();
+        }
+      });
+      
+      // Escuchar cancelaciones de solicitudes
+      _requestCanceledSub = _socketService.statusUpdateStream.where((u) => u.status == 'CANCELED').listen((update) {
+        if (mounted) {
+          print('📊 Admin: Solicitud cancelada');
+          _refreshShifts();
+          context.read<CompanyHomeBloc>().add(LoadPendingRequestsEvent());
+          
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('❌ Una solicitud fue cancelada'),
+              backgroundColor: Colors.orange,
+              duration: Duration(seconds: 2),
+            ),
+          );
         }
       });
     }
@@ -94,6 +148,9 @@ class _CompanyHomeViewState extends State<_CompanyHomeView> {
   void dispose() {
     _newRequestSub?.cancel();
     _statusUpdateSub?.cancel();
+    _requestAssignedSub?.cancel();
+    _locationUpdateSub?.cancel();
+    _requestCanceledSub?.cancel();
     _refreshTimer?.cancel();
     _socketService.disconnect();
     super.dispose();
