@@ -18,6 +18,9 @@ abstract class DriverRemoteDataSource {
     required String status,
     required String token,
   });
+
+  /// Obtiene el turno activo del conductor (si existe)
+  Future<Map<String, dynamic>?> getMyActiveShift({required String token});
 }
 
 class DriverRemoteDataSourceImpl implements DriverRemoteDataSource {
@@ -37,10 +40,7 @@ class DriverRemoteDataSourceImpl implements DriverRemoteDataSource {
         'Content-Type': 'application/json',
         'Authorization': 'Bearer $token',
       },
-      body: json.encode({
-        'plate': plate,
-        'code': code,
-      }),
+      body: json.encode({'plate': plate, 'code': code}),
     );
 
     if (response.statusCode == 201 || response.statusCode == 200) {
@@ -91,5 +91,28 @@ class DriverRemoteDataSourceImpl implements DriverRemoteDataSource {
       throw Exception(errorBody['message'] ?? 'Error al actualizar estado');
     }
   }
-}
 
+  @override
+  Future<Map<String, dynamic>?> getMyActiveShift({
+    required String token,
+  }) async {
+    final response = await client.get(
+      Uri.parse('$apiUrl/shifts/my-active'),
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer $token',
+      },
+    );
+
+    if (response.statusCode == 200) {
+      // El backend puede devolver null si no hay turno activo
+      final body = response.body;
+      if (body.isEmpty || body == 'null') {
+        return null;
+      }
+      return json.decode(body);
+    } else {
+      return null; // No hay turno activo
+    }
+  }
+}
