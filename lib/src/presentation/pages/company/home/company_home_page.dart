@@ -1,9 +1,13 @@
 // lib/src/presentation/pages/company/home/company_home_page.dart
 
+// ignore_for_file: avoid_print
+
 import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:medcar_frontend/dependency_injection.dart';
+import 'package:medcar_frontend/src/data/datasources/remote/company_admin_remote_datasource.dart';
 import 'package:medcar_frontend/src/data/datasources/remote/service_request_remote_datasource.dart';
 import 'package:medcar_frontend/src/data/datasources/remote/shifts_remote_datasource.dart';
 import 'package:medcar_frontend/src/data/services/socket_service.dart';
@@ -43,9 +47,15 @@ class _CompanyHomeViewState extends State<_CompanyHomeView> {
   StreamSubscription? _locationUpdateSub;
   StreamSubscription? _requestCanceledSub;
   Timer? _refreshTimer;
-  
-  // Para evitar múltiples refreshes seguidos
   DateTime? _lastShiftRefresh;
+
+  int _currentTabIndex = 0;
+
+  // Datos locales para tabs
+  List<Map<String, dynamic>> _ambulances = [];
+  List<Map<String, dynamic>> _drivers = [];
+  bool _isLoadingAmbulances = false;
+  bool _isLoadingDrivers = false;
 
   @override
   void initState() {
@@ -55,18 +65,16 @@ class _CompanyHomeViewState extends State<_CompanyHomeView> {
   }
 
   void _startAutoRefresh() {
-    // Refrescar turnos activos cada 10 segundos
     _refreshTimer = Timer.periodic(const Duration(seconds: 10), (timer) {
       if (mounted) {
         _refreshShifts();
       }
     });
   }
-  
+
   void _refreshShifts() {
-    // Evitar múltiples refreshes en menos de 3 segundos
     final now = DateTime.now();
-    if (_lastShiftRefresh != null && 
+    if (_lastShiftRefresh != null &&
         now.difference(_lastShiftRefresh!).inSeconds < 3) {
       return;
     }
@@ -77,16 +85,13 @@ class _CompanyHomeViewState extends State<_CompanyHomeView> {
   Future<void> _initWebSocket() async {
     final authRepo = sl<AuthRepository>();
     final session = await authRepo.getUserSession();
-    
+
     if (session != null) {
       _socketService.connect(session.accessToken);
-      
-      // Escuchar nuevas solicitudes
+
       _newRequestSub = _socketService.onNewServiceRequest.listen((data) {
         if (mounted) {
-          // Recargar solicitudes pendientes
           context.read<CompanyHomeBloc>().add(LoadPendingRequestsEvent());
-          
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
               content: Text('🚨 ¡Nueva solicitud de emergencia!'),
@@ -97,50 +102,45 @@ class _CompanyHomeViewState extends State<_CompanyHomeView> {
         }
       });
 
-      // Escuchar actualizaciones de estado (cuando conductor cambia estado)
       _statusUpdateSub = _socketService.statusUpdateStream.listen((update) {
         if (mounted) {
-          print('📊 Admin: Estado actualizado - ${update.status}');
-          // Recargar turnos activos para ver el nuevo estado
-          _refreshShifts();
-          // También recargar solicitudes pendientes por si una se completó
-          context.read<CompanyHomeBloc>().add(LoadPendingRequestsEvent());
-        }
-      });
-      
-      // Escuchar cuando se asigna una solicitud
-      _requestAssignedSub = _socketService.requestAssignedStream.listen((update) {
-        if (mounted) {
-          print('📊 Admin: Solicitud asignada - ${update.status}');
           _refreshShifts();
           context.read<CompanyHomeBloc>().add(LoadPendingRequestsEvent());
         }
       });
-      
-      // Escuchar actualizaciones de ubicación (indica actividad de turnos)
-      _locationUpdateSub = _socketService.ambulanceLocationStream.listen((location) {
-        // Solo refrescar cada cierto tiempo para no sobrecargar
+
+      _requestAssignedSub = _socketService.requestAssignedStream.listen((
+        update,
+      ) {
         if (mounted) {
-          _refreshShifts();
-        }
-      });
-      
-      // Escuchar cancelaciones de solicitudes
-      _requestCanceledSub = _socketService.statusUpdateStream.where((u) => u.status == 'CANCELED').listen((update) {
-        if (mounted) {
-          print('📊 Admin: Solicitud cancelada');
           _refreshShifts();
           context.read<CompanyHomeBloc>().add(LoadPendingRequestsEvent());
-          
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('❌ Una solicitud fue cancelada'),
-              backgroundColor: Colors.orange,
-              duration: Duration(seconds: 2),
-            ),
-          );
         }
       });
+
+      _locationUpdateSub = _socketService.ambulanceLocationStream.listen((
+        location,
+      ) {
+        if (mounted) {
+          _refreshShifts();
+        }
+      });
+
+      _requestCanceledSub = _socketService.statusUpdateStream
+          .where((u) => u.status == 'CANCELED')
+          .listen((update) {
+            if (mounted) {
+              _refreshShifts();
+              context.read<CompanyHomeBloc>().add(LoadPendingRequestsEvent());
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(
+                  content: Text('❌ Una solicitud fue cancelada'),
+                  backgroundColor: Colors.orange,
+                  duration: Duration(seconds: 2),
+                ),
+              );
+            }
+          });
     }
   }
 
@@ -154,6 +154,42 @@ class _CompanyHomeViewState extends State<_CompanyHomeView> {
     _refreshTimer?.cancel();
     _socketService.disconnect();
     super.dispose();
+  }
+
+  Future<void> _loadAmbulances() async {
+    setState(() => _isLoadingAmbulances = true);
+    try {
+      final authRepo = sl<AuthRepository>();
+      final session = await authRepo.getUserSession();
+      if (session != null) {
+        final dataSource = sl<CompanyAdminRemoteDataSource>();
+        final ambulances = await dataSource.getMyAmbulances(
+          token: session.accessToken,
+        );
+        setState(() => _ambulances = ambulances);
+      }
+    } catch (e) {
+      print('Error cargando ambulancias: $e');
+    } finally {
+      setState(() => _isLoadingAmbulances = false);
+    }
+  }
+
+  Future<void> _loadDrivers() async {
+    setState(() => _isLoadingDrivers = true);
+    try {
+      final authRepo = sl<AuthRepository>();
+      final session = await authRepo.getUserSession();
+      if (session != null) {
+        final dataSource = sl<CompanyAdminRemoteDataSource>();
+        final drivers = await dataSource.getDrivers(token: session.accessToken);
+        setState(() => _drivers = drivers);
+      }
+    } catch (e) {
+      print('Error cargando conductores: $e');
+    } finally {
+      setState(() => _isLoadingDrivers = false);
+    }
   }
 
   @override
@@ -183,7 +219,10 @@ class _CompanyHomeViewState extends State<_CompanyHomeView> {
           appBar: AppBar(
             title: Text(
               'Hola, ${state.userName}',
-              style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+              style: const TextStyle(
+                color: Colors.white,
+                fontWeight: FontWeight.bold,
+              ),
             ),
             backgroundColor: const Color(0xFF1E3A5F),
             actions: [
@@ -191,6 +230,8 @@ class _CompanyHomeViewState extends State<_CompanyHomeView> {
                 icon: const Icon(Icons.refresh, color: Colors.white),
                 onPressed: () {
                   context.read<CompanyHomeBloc>().add(CompanyHomeInitEvent());
+                  if (_currentTabIndex == 1) _loadAmbulances();
+                  if (_currentTabIndex == 2) _loadDrivers();
                 },
               ),
               IconButton(
@@ -204,81 +245,915 @@ class _CompanyHomeViewState extends State<_CompanyHomeView> {
                 icon: const Icon(Icons.logout, color: Colors.white),
                 onPressed: () {
                   context.read<CompanyHomeBloc>().add(LogoutEvent());
-                  Navigator.pushNamedAndRemoveUntil(context, 'login', (route) => false);
+                  Navigator.pushNamedAndRemoveUntil(
+                    context,
+                    'login',
+                    (route) => false,
+                  );
                 },
               ),
             ],
           ),
           body: state.status == CompanyHomeStatus.loading
               ? const Center(child: CircularProgressIndicator())
-              : RefreshIndicator(
-                  onRefresh: () async {
-                    context.read<CompanyHomeBloc>().add(CompanyHomeInitEvent());
-                  },
-                  child: SingleChildScrollView(
-                    physics: const AlwaysScrollableScrollPhysics(),
-                    padding: const EdgeInsets.all(16),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        // Sección de solicitudes pendientes
-                        _buildSectionTitle(
-                          '🚨 Solicitudes Pendientes',
-                          state.pendingRequests.length,
-                        ),
-                        const SizedBox(height: 12),
-                        if (state.pendingRequests.isEmpty)
-                          _buildEmptyCard('No hay solicitudes pendientes')
-                        else
-                          ...state.pendingRequests.map((request) => _buildRequestCard(
-                            context,
-                            request,
-                            state.activeShifts,
-                            state.status == CompanyHomeStatus.assigning,
-                          )),
-
-                        const SizedBox(height: 24),
-
-                        // Sección de turnos activos
-                        _buildSectionTitle(
-                          '🚑 Turnos Activos',
-                          state.activeShifts.length,
-                        ),
-                        const SizedBox(height: 12),
-                        if (state.activeShifts.isEmpty)
-                          _buildEmptyCard('No hay turnos activos')
-                        else
-                          ...state.activeShifts.map((shift) => _buildShiftCard(shift)),
-                      ],
-                    ),
-                  ),
+              : IndexedStack(
+                  index: _currentTabIndex,
+                  children: [
+                    _buildEmergenciesTab(context, state),
+                    _buildAmbulancesTab(context),
+                    _buildDriversTab(context),
+                    _buildShiftCodesTab(context),
+                  ],
                 ),
+          bottomNavigationBar: BottomNavigationBar(
+            currentIndex: _currentTabIndex,
+            type: BottomNavigationBarType.fixed,
+            selectedItemColor: const Color(0xFF1E3A5F),
+            unselectedItemColor: Colors.grey,
+            onTap: (index) {
+              setState(() => _currentTabIndex = index);
+              if (index == 1 && _ambulances.isEmpty) _loadAmbulances();
+              if (index == 2 && _drivers.isEmpty) _loadDrivers();
+              if (index == 3 && _ambulances.isEmpty) _loadAmbulances();
+            },
+            items: const [
+              BottomNavigationBarItem(
+                icon: Icon(Icons.emergency),
+                label: 'Emergencias',
+              ),
+              BottomNavigationBarItem(
+                icon: Icon(Icons.local_shipping),
+                label: 'Ambulancias',
+              ),
+              BottomNavigationBarItem(
+                icon: Icon(Icons.people),
+                label: 'Conductores',
+              ),
+              BottomNavigationBarItem(
+                icon: Icon(Icons.qr_code),
+                label: 'Códigos',
+              ),
+            ],
+          ),
         );
       },
     );
   }
 
+  // ==================== TAB EMERGENCIAS ====================
+  Widget _buildEmergenciesTab(BuildContext context, CompanyHomeState state) {
+    return RefreshIndicator(
+      onRefresh: () async {
+        context.read<CompanyHomeBloc>().add(CompanyHomeInitEvent());
+      },
+      child: SingleChildScrollView(
+        physics: const AlwaysScrollableScrollPhysics(),
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            _buildSectionTitle(
+              '🚨 Solicitudes Pendientes',
+              state.pendingRequests.length,
+            ),
+            const SizedBox(height: 12),
+            if (state.pendingRequests.isEmpty)
+              _buildEmptyCard('No hay solicitudes pendientes')
+            else
+              ...state.pendingRequests.map(
+                (request) => _buildRequestCard(
+                  context,
+                  request,
+                  state.activeShifts,
+                  state.status == CompanyHomeStatus.assigning,
+                ),
+              ),
+            const SizedBox(height: 24),
+            _buildSectionTitle('🚑 Turnos Activos', state.activeShifts.length),
+            const SizedBox(height: 12),
+            if (state.activeShifts.isEmpty)
+              _buildEmptyCard('No hay turnos activos')
+            else
+              ...state.activeShifts.map((shift) => _buildShiftCard(shift)),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // ==================== TAB AMBULANCIAS ====================
+  Widget _buildAmbulancesTab(BuildContext context) {
+    return Column(
+      children: [
+        Padding(
+          padding: const EdgeInsets.all(16),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              const Text(
+                '🚑 Mis Ambulancias',
+                style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+              ),
+              ElevatedButton.icon(
+                onPressed: () => _showCreateAmbulanceDialog(context),
+                icon: const Icon(Icons.add, size: 18),
+                label: const Text('Nueva'),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xFF1E3A5F),
+                  foregroundColor: Colors.white,
+                ),
+              ),
+            ],
+          ),
+        ),
+        Expanded(
+          child: _isLoadingAmbulances
+              ? const Center(child: CircularProgressIndicator())
+              : _ambulances.isEmpty
+              ? Center(
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(
+                        Icons.local_shipping_outlined,
+                        size: 64,
+                        color: Colors.grey[400],
+                      ),
+                      const SizedBox(height: 16),
+                      Text(
+                        'No tienes ambulancias registradas',
+                        style: TextStyle(color: Colors.grey[600]),
+                      ),
+                      const SizedBox(height: 8),
+                      ElevatedButton(
+                        onPressed: () => _showCreateAmbulanceDialog(context),
+                        child: const Text('Registrar primera ambulancia'),
+                      ),
+                    ],
+                  ),
+                )
+              : RefreshIndicator(
+                  onRefresh: _loadAmbulances,
+                  child: ListView.builder(
+                    padding: const EdgeInsets.symmetric(horizontal: 16),
+                    itemCount: _ambulances.length,
+                    itemBuilder: (context, index) =>
+                        _buildAmbulanceCard(_ambulances[index]),
+                  ),
+                ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildAmbulanceCard(Map<String, dynamic> ambulance) {
+    final status = ambulance['status'] ?? 'OPERATIONAL';
+    final isOperational = status == 'OPERATIONAL';
+
+    return Card(
+      margin: const EdgeInsets.only(bottom: 12),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      child: ListTile(
+        leading: CircleAvatar(
+          backgroundColor: isOperational ? Colors.green[100] : Colors.red[100],
+          child: Icon(
+            Icons.local_shipping,
+            color: isOperational ? Colors.green : Colors.red,
+          ),
+        ),
+        title: Text(
+          ambulance['plate'] ?? 'Sin placa',
+          style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+        ),
+        subtitle: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('Tipo: ${ambulance['type'] ?? 'N/A'}'),
+            Text('SEDES: ${ambulance['sedesCode'] ?? 'N/A'}'),
+          ],
+        ),
+        trailing: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+          decoration: BoxDecoration(
+            color: isOperational ? Colors.green : Colors.red,
+            borderRadius: BorderRadius.circular(20),
+          ),
+          child: Text(
+            isOperational ? 'OPERATIVA' : 'INACTIVA',
+            style: const TextStyle(
+              color: Colors.white,
+              fontSize: 12,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+        ),
+        isThreeLine: true,
+      ),
+    );
+  }
+
+  void _showCreateAmbulanceDialog(BuildContext context) {
+    final plateController = TextEditingController();
+    final sedesController = TextEditingController();
+    String selectedType = 'TYPE_I';
+
+    showDialog(
+      context: context,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          title: const Text('Nueva Ambulancia'),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                TextField(
+                  controller: plateController,
+                  decoration: const InputDecoration(
+                    labelText: 'Placa',
+                    hintText: 'Ej: 1234ABC',
+                    border: OutlineInputBorder(),
+                  ),
+                  textCapitalization: TextCapitalization.characters,
+                ),
+                const SizedBox(height: 16),
+                TextField(
+                  controller: sedesController,
+                  decoration: const InputDecoration(
+                    labelText: 'Código SEDES',
+                    hintText: 'Ej: SEDES-001',
+                    border: OutlineInputBorder(),
+                  ),
+                ),
+                const SizedBox(height: 16),
+                DropdownButtonFormField<String>(
+                  value: selectedType,
+                  decoration: const InputDecoration(
+                    labelText: 'Tipo de ambulancia',
+                    border: OutlineInputBorder(),
+                  ),
+                  items: const [
+                    DropdownMenuItem(
+                      value: 'TYPE_I',
+                      child: Text('Tipo I - Traslado'),
+                    ),
+                    DropdownMenuItem(
+                      value: 'TYPE_II',
+                      child: Text('Tipo II - Emergencias básicas'),
+                    ),
+                    DropdownMenuItem(
+                      value: 'TYPE_III',
+                      child: Text('Tipo III - UCI Móvil'),
+                    ),
+                  ],
+                  onChanged: (value) {
+                    setDialogState(() => selectedType = value!);
+                  },
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext),
+              child: const Text('Cancelar'),
+            ),
+            ElevatedButton(
+              onPressed: () async {
+                if (plateController.text.isEmpty ||
+                    sedesController.text.isEmpty) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text('Completa todos los campos'),
+                      backgroundColor: Colors.red,
+                    ),
+                  );
+                  return;
+                }
+                Navigator.pop(dialogContext);
+                await _createAmbulance(
+                  plateController.text,
+                  sedesController.text,
+                  selectedType,
+                );
+              },
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFF1E3A5F),
+              ),
+              child: const Text('Crear', style: TextStyle(color: Colors.white)),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> _createAmbulance(
+    String plate,
+    String sedesCode,
+    String type,
+  ) async {
+    try {
+      final authRepo = sl<AuthRepository>();
+      final session = await authRepo.getUserSession();
+      if (session != null) {
+        final dataSource = sl<CompanyAdminRemoteDataSource>();
+        await dataSource.createAmbulance(
+          plate: plate,
+          sedesCode: sedesCode,
+          type: type,
+          token: session.accessToken,
+        );
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('✅ Ambulancia creada'),
+            backgroundColor: Colors.green,
+          ),
+        );
+        _loadAmbulances();
+      }
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Error: ${e.toString().replaceAll('Exception: ', '')}'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
+  }
+
+  // ==================== TAB CONDUCTORES ====================
+  Widget _buildDriversTab(BuildContext context) {
+    return Column(
+      children: [
+        Padding(
+          padding: const EdgeInsets.all(16),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              const Text(
+                '👨‍✈️ Conductores',
+                style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+              ),
+              ElevatedButton.icon(
+                onPressed: () => _showAssignDriverDialog(context),
+                icon: const Icon(Icons.person_add, size: 18),
+                label: const Text('Asignar'),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xFF1E3A5F),
+                  foregroundColor: Colors.white,
+                ),
+              ),
+            ],
+          ),
+        ),
+        Expanded(
+          child: _isLoadingDrivers
+              ? const Center(child: CircularProgressIndicator())
+              : _drivers.isEmpty
+              ? Center(
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(
+                        Icons.people_outline,
+                        size: 64,
+                        color: Colors.grey[400],
+                      ),
+                      const SizedBox(height: 16),
+                      Text(
+                        'No hay conductores asignados',
+                        style: TextStyle(color: Colors.grey[600]),
+                      ),
+                      const SizedBox(height: 8),
+                      ElevatedButton(
+                        onPressed: () => _showAssignDriverDialog(context),
+                        child: const Text('Asignar primer conductor'),
+                      ),
+                    ],
+                  ),
+                )
+              : RefreshIndicator(
+                  onRefresh: _loadDrivers,
+                  child: ListView.builder(
+                    padding: const EdgeInsets.symmetric(horizontal: 16),
+                    itemCount: _drivers.length,
+                    itemBuilder: (context, index) =>
+                        _buildDriverCard(_drivers[index]),
+                  ),
+                ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildDriverCard(Map<String, dynamic> driver) {
+    return Card(
+      margin: const EdgeInsets.only(bottom: 12),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      child: ListTile(
+        leading: CircleAvatar(
+          backgroundColor: Colors.blue[100],
+          child: Text(
+            '${driver['name']?[0] ?? ''}${driver['lastname']?[0] ?? ''}'
+                .toUpperCase(),
+            style: const TextStyle(
+              fontWeight: FontWeight.bold,
+              color: Colors.blue,
+            ),
+          ),
+        ),
+        title: Text(
+          '${driver['name'] ?? ''} ${driver['lastname'] ?? ''}',
+          style: const TextStyle(fontWeight: FontWeight.bold),
+        ),
+        subtitle: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(driver['email'] ?? 'Sin email'),
+            Text('📱 ${driver['phone'] ?? 'Sin teléfono'}'),
+          ],
+        ),
+        trailing: IconButton(
+          icon: const Icon(Icons.person_remove, color: Colors.red),
+          tooltip: 'Quitar rol de conductor',
+          onPressed: () => _showRemoveDriverDialog(driver),
+        ),
+        isThreeLine: true,
+      ),
+    );
+  }
+
+  void _showRemoveDriverDialog(Map<String, dynamic> driver) {
+    showDialog(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Quitar Conductor'),
+        content: Text(
+          '¿Estás seguro de quitar el rol de conductor a ${driver['name']} ${driver['lastname']}?\n\nEl usuario ya no podrá iniciar turnos.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext),
+            child: const Text('Cancelar'),
+          ),
+          ElevatedButton(
+            onPressed: () async {
+              Navigator.pop(dialogContext);
+              await _removeDriverRole(driver['id']);
+            },
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+            child: const Text(
+              'Quitar rol',
+              style: TextStyle(color: Colors.white),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _removeDriverRole(int userId) async {
+    try {
+      final authRepo = sl<AuthRepository>();
+      final session = await authRepo.getUserSession();
+      if (session != null) {
+        final dataSource = sl<CompanyAdminRemoteDataSource>();
+        await dataSource.removeDriverRole(
+          userId: userId,
+          token: session.accessToken,
+        );
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('✅ Rol de conductor removido'),
+            backgroundColor: Colors.green,
+          ),
+        );
+        _loadDrivers();
+      }
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Error: ${e.toString().replaceAll('Exception: ', '')}'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
+  }
+
+  void _showAssignDriverDialog(BuildContext context) {
+    final emailController = TextEditingController();
+    Map<String, dynamic>? foundUser;
+    bool isSearching = false;
+    bool isAssigning = false;
+
+    showDialog(
+      context: context,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          title: const Text('Asignar Conductor'),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Text(
+                  'Busca un usuario por email para asignarle el rol de conductor.',
+                  style: TextStyle(color: Colors.grey),
+                ),
+                const SizedBox(height: 16),
+                Row(
+                  children: [
+                    Expanded(
+                      child: TextField(
+                        controller: emailController,
+                        decoration: const InputDecoration(
+                          labelText: 'Email del usuario',
+                          hintText: 'ejemplo@email.com',
+                          border: OutlineInputBorder(),
+                        ),
+                        keyboardType: TextInputType.emailAddress,
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    IconButton(
+                      onPressed: isSearching
+                          ? null
+                          : () async {
+                              if (emailController.text.isEmpty) return;
+                              setDialogState(() {
+                                isSearching = true;
+                                foundUser = null;
+                              });
+                              try {
+                                final authRepo = sl<AuthRepository>();
+                                final session = await authRepo.getUserSession();
+                                if (session != null) {
+                                  final dataSource =
+                                      sl<CompanyAdminRemoteDataSource>();
+                                  final user = await dataSource
+                                      .searchUserByEmail(
+                                        email: emailController.text,
+                                        token: session.accessToken,
+                                      );
+                                  setDialogState(() => foundUser = user);
+                                }
+                              } catch (e) {
+                                print('Error buscando usuario: $e');
+                              } finally {
+                                setDialogState(() => isSearching = false);
+                              }
+                            },
+                      icon: isSearching
+                          ? const SizedBox(
+                              width: 20,
+                              height: 20,
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            )
+                          : const Icon(Icons.search),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 16),
+                if (foundUser != null)
+                  Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: Colors.green[50],
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: Colors.green),
+                    ),
+                    child: Column(
+                      children: [
+                        Row(
+                          children: [
+                            const Icon(Icons.check_circle, color: Colors.green),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: Text(
+                                '${foundUser!['name']} ${foundUser!['lastname']}',
+                                style: const TextStyle(
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 8),
+                        Text('Email: ${foundUser!['email']}'),
+                        Text('Teléfono: ${foundUser!['phone']}'),
+                        const SizedBox(height: 8),
+                        if ((foundUser!['roles'] as List?)?.contains(
+                              'DRIVER',
+                            ) ==
+                            true)
+                          const Text(
+                            '⚠️ Este usuario ya es conductor',
+                            style: TextStyle(
+                              color: Colors.orange,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          )
+                        else
+                          ElevatedButton(
+                            onPressed: isAssigning
+                                ? null
+                                : () async {
+                                    setDialogState(() => isAssigning = true);
+                                    try {
+                                      final authRepo = sl<AuthRepository>();
+                                      final session = await authRepo
+                                          .getUserSession();
+                                      if (session != null) {
+                                        final dataSource =
+                                            sl<CompanyAdminRemoteDataSource>();
+                                        await dataSource.assignDriverRole(
+                                          userId: foundUser!['id'],
+                                          token: session.accessToken,
+                                        );
+                                        Navigator.pop(dialogContext);
+                                        ScaffoldMessenger.of(
+                                          this.context,
+                                        ).showSnackBar(
+                                          const SnackBar(
+                                            content: Text(
+                                              '✅ Conductor asignado',
+                                            ),
+                                            backgroundColor: Colors.green,
+                                          ),
+                                        );
+                                        _loadDrivers();
+                                      }
+                                    } catch (e) {
+                                      ScaffoldMessenger.of(
+                                        this.context,
+                                      ).showSnackBar(
+                                        SnackBar(
+                                          content: Text(
+                                            'Error: ${e.toString().replaceAll('Exception: ', '')}',
+                                          ),
+                                          backgroundColor: Colors.red,
+                                        ),
+                                      );
+                                    } finally {
+                                      setDialogState(() => isAssigning = false);
+                                    }
+                                  },
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: Colors.green,
+                            ),
+                            child: isAssigning
+                                ? const SizedBox(
+                                    width: 20,
+                                    height: 20,
+                                    child: CircularProgressIndicator(
+                                      strokeWidth: 2,
+                                      color: Colors.white,
+                                    ),
+                                  )
+                                : const Text(
+                                    'Asignar como conductor',
+                                    style: TextStyle(color: Colors.white),
+                                  ),
+                          ),
+                      ],
+                    ),
+                  )
+                else if (emailController.text.isNotEmpty && !isSearching)
+                  Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: Colors.red[50],
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: Colors.red),
+                    ),
+                    child: const Row(
+                      children: [
+                        Icon(Icons.error, color: Colors.red),
+                        SizedBox(width: 8),
+                        Text('Usuario no encontrado'),
+                      ],
+                    ),
+                  ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext),
+              child: const Text('Cerrar'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // ==================== TAB CÓDIGOS DE TURNO ====================
+  Widget _buildShiftCodesTab(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            '🔑 Generar Código de Turno',
+            style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+          ),
+          const SizedBox(height: 8),
+          const Text(
+            'Selecciona una ambulancia para generar un código que el conductor usará para iniciar su turno.',
+            style: TextStyle(color: Colors.grey),
+          ),
+          const SizedBox(height: 24),
+          Expanded(
+            child: _isLoadingAmbulances
+                ? const Center(child: CircularProgressIndicator())
+                : _ambulances.isEmpty
+                ? Center(
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(
+                          Icons.local_shipping_outlined,
+                          size: 64,
+                          color: Colors.grey[400],
+                        ),
+                        const SizedBox(height: 16),
+                        Text(
+                          'Primero registra una ambulancia',
+                          style: TextStyle(color: Colors.grey[600]),
+                        ),
+                      ],
+                    ),
+                  )
+                : ListView.builder(
+                    itemCount: _ambulances.length,
+                    itemBuilder: (context, index) {
+                      final ambulance = _ambulances[index];
+                      return Card(
+                        margin: const EdgeInsets.only(bottom: 12),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: ListTile(
+                          leading: const CircleAvatar(
+                            backgroundColor: Color(0xFF1E3A5F),
+                            child: Icon(
+                              Icons.local_shipping,
+                              color: Colors.white,
+                            ),
+                          ),
+                          title: Text(
+                            ambulance['plate'] ?? 'Sin placa',
+                            style: const TextStyle(fontWeight: FontWeight.bold),
+                          ),
+                          subtitle: Text('Tipo: ${ambulance['type'] ?? 'N/A'}'),
+                          trailing: ElevatedButton(
+                            onPressed: () =>
+                                _generateShiftCode(ambulance['id']),
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: Colors.orange,
+                            ),
+                            child: const Text(
+                              'Generar',
+                              style: TextStyle(color: Colors.white),
+                            ),
+                          ),
+                        ),
+                      );
+                    },
+                  ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _generateShiftCode(int ambulanceId) async {
+    try {
+      final authRepo = sl<AuthRepository>();
+      final session = await authRepo.getUserSession();
+      if (session != null) {
+        final dataSource = sl<CompanyAdminRemoteDataSource>();
+        final result = await dataSource.generateShiftCode(
+          ambulanceId: ambulanceId,
+          token: session.accessToken,
+        );
+
+        final code = result['code'] ?? 'N/A';
+        final expiresAt = result['expiresAt'] ?? 'N/A';
+
+        if (mounted) {
+          showDialog(
+            context: context,
+            builder: (context) => AlertDialog(
+              title: const Row(
+                children: [
+                  Icon(Icons.check_circle, color: Colors.green, size: 28),
+                  SizedBox(width: 8),
+                  Text('Código Generado'),
+                ],
+              ),
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Text('Comparte este código con el conductor:'),
+                  const SizedBox(height: 16),
+                  Container(
+                    padding: const EdgeInsets.all(20),
+                    decoration: BoxDecoration(
+                      color: Colors.blue[50],
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: Colors.blue, width: 2),
+                    ),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Text(
+                          code,
+                          style: const TextStyle(
+                            fontSize: 32,
+                            fontWeight: FontWeight.bold,
+                            letterSpacing: 4,
+                            color: Color(0xFF1E3A5F),
+                          ),
+                        ),
+                        const SizedBox(width: 16),
+                        IconButton(
+                          onPressed: () {
+                            Clipboard.setData(ClipboardData(text: code));
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(
+                                content: Text('Código copiado'),
+                                duration: Duration(seconds: 1),
+                              ),
+                            );
+                          },
+                          icon: const Icon(Icons.copy, color: Colors.blue),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  Text(
+                    '⏰ Expira: ${_formatDate(expiresAt)}',
+                    style: const TextStyle(
+                      color: Colors.orange,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ],
+              ),
+              actions: [
+                ElevatedButton(
+                  onPressed: () => Navigator.pop(context),
+                  child: const Text('Cerrar'),
+                ),
+              ],
+            ),
+          );
+        }
+      }
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Error: ${e.toString().replaceAll('Exception: ', '')}'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
+  }
+
+  String _formatDate(String dateStr) {
+    try {
+      final date = DateTime.parse(dateStr);
+      return '${date.day}/${date.month}/${date.year} ${date.hour}:${date.minute.toString().padLeft(2, '0')}';
+    } catch (e) {
+      return dateStr;
+    }
+  }
+
+  // ==================== WIDGETS COMPARTIDOS ====================
   Widget _buildSectionTitle(String title, int count) {
     return Row(
       children: [
-        Text(
-          title,
-          style: const TextStyle(
-            fontSize: 20,
-            fontWeight: FontWeight.bold,
-            color: Color(0xFF1E3A5F),
+        Expanded(
+          child: Text(
+            title,
+            style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
           ),
         ),
-        const SizedBox(width: 8),
         Container(
-          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
           decoration: BoxDecoration(
             color: count > 0 ? Colors.red : Colors.grey,
-            borderRadius: BorderRadius.circular(12),
+            borderRadius: BorderRadius.circular(20),
           ),
           child: Text(
-            '$count',
-            style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+            count.toString(),
+            style: const TextStyle(
+              color: Colors.white,
+              fontWeight: FontWeight.bold,
+            ),
           ),
         ),
       ],
@@ -287,13 +1162,11 @@ class _CompanyHomeViewState extends State<_CompanyHomeView> {
 
   Widget _buildEmptyCard(String message) {
     return Card(
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
       child: Padding(
         padding: const EdgeInsets.all(24),
         child: Center(
-          child: Text(
-            message,
-            style: TextStyle(color: Colors.grey[600], fontSize: 16),
-          ),
+          child: Text(message, style: TextStyle(color: Colors.grey[600])),
         ),
       ),
     );
@@ -305,16 +1178,15 @@ class _CompanyHomeViewState extends State<_CompanyHomeView> {
     List<Map<String, dynamic>> activeShifts,
     bool isAssigning,
   ) {
-    final client = request['client'] as Map<String, dynamic>?;
-    final clientName = client != null ? '${client['name']} ${client['lastname']}' : 'Desconocido';
     final emergencyType = request['emergencyType'] ?? 'N/A';
-    final description = request['originDescription'] ?? 'Sin descripción';
-    final location = request['originLocation'] as Map<String, dynamic>?;
-    final coordinates = location?['coordinates'] as List<dynamic>?;
+    final client = request['client'] as Map<String, dynamic>?;
+    final clientName = client != null
+        ? '${client['name']} ${client['lastname']}'
+        : 'Cliente';
+    final createdAt = request['createdAt'] ?? '';
 
     return Card(
       margin: const EdgeInsets.only(bottom: 12),
-      elevation: 3,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
       child: Padding(
         padding: const EdgeInsets.all(16),
@@ -324,20 +1196,27 @@ class _CompanyHomeViewState extends State<_CompanyHomeView> {
             Row(
               children: [
                 Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 6,
+                  ),
                   decoration: BoxDecoration(
-                    color: _getEmergencyColor(emergencyType),
-                    borderRadius: BorderRadius.circular(8),
+                    color: Colors.red[100],
+                    borderRadius: BorderRadius.circular(20),
                   ),
                   child: Text(
                     emergencyType,
-                    style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 12),
+                    style: TextStyle(
+                      color: Colors.red[800],
+                      fontWeight: FontWeight.bold,
+                      fontSize: 12,
+                    ),
                   ),
                 ),
                 const Spacer(),
                 Text(
-                  '#${request['id']}',
-                  style: TextStyle(color: Colors.grey[600], fontWeight: FontWeight.bold),
+                  _formatDate(createdAt),
+                  style: TextStyle(color: Colors.grey[600], fontSize: 12),
                 ),
               ],
             ),
@@ -346,96 +1225,113 @@ class _CompanyHomeViewState extends State<_CompanyHomeView> {
               children: [
                 const Icon(Icons.person, size: 18, color: Colors.grey),
                 const SizedBox(width: 8),
-                Expanded(
-                  child: Text(
-                    clientName,
-                    style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
-                  ),
+                Text(
+                  clientName,
+                  style: const TextStyle(fontWeight: FontWeight.bold),
                 ),
               ],
             ),
-            if (client?['phone'] != null) ...[
-              const SizedBox(height: 4),
-              Row(
-                children: [
-                  const Icon(Icons.phone, size: 18, color: Colors.grey),
-                  const SizedBox(width: 8),
-                  Text(client!['phone'], style: TextStyle(color: Colors.grey[700])),
-                ],
-              ),
-            ],
-            const SizedBox(height: 8),
-            Row(
-              children: [
-                const Icon(Icons.description, size: 18, color: Colors.grey),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: Text(
-                    description,
-                    style: TextStyle(color: Colors.grey[700]),
-                  ),
-                ),
-              ],
-            ),
-            if (coordinates != null) ...[
-              const SizedBox(height: 4),
-              Row(
-                children: [
-                  const Icon(Icons.location_on, size: 18, color: Colors.red),
-                  const SizedBox(width: 8),
-                  Text(
-                    'Lat: ${coordinates[1].toStringAsFixed(4)}, Lng: ${coordinates[0].toStringAsFixed(4)}',
-                    style: TextStyle(color: Colors.grey[600], fontSize: 12),
-                  ),
-                ],
-              ),
-            ],
             const SizedBox(height: 16),
-            const Divider(),
-            const SizedBox(height: 8),
-            const Text(
-              'Asignar a:',
-              style: TextStyle(fontWeight: FontWeight.bold),
-            ),
-            const SizedBox(height: 8),
             if (activeShifts.isEmpty)
-              Text(
-                'No hay turnos activos disponibles',
-                style: TextStyle(color: Colors.red[400], fontStyle: FontStyle.italic),
+              const Text(
+                '⚠️ No hay ambulancias disponibles',
+                style: TextStyle(color: Colors.orange),
               )
             else
-              Wrap(
-                spacing: 8,
-                runSpacing: 8,
-                children: activeShifts.map((shift) {
-                  final ambulance = shift['ambulance'] as Map<String, dynamic>?;
-                  final driver = shift['driver'] as Map<String, dynamic>?;
-                  final plate = ambulance?['plate'] ?? 'N/A';
-                  final driverName = driver?['name'] ?? 'Sin conductor';
-
-                  return ElevatedButton.icon(
-                    onPressed: isAssigning
-                        ? null
-                        : () {
-                            _showAssignConfirmation(
-                              context,
-                              request['id'],
-                              shift['id'],
-                              plate,
-                              driverName,
-                            );
-                          },
-                    icon: const Icon(Icons.local_shipping, size: 18),
-                    label: Text('$plate ($driverName)'),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: const Color(0xFF1E3A5F),
-                      foregroundColor: Colors.white,
-                    ),
-                  );
-                }).toList(),
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton.icon(
+                  onPressed: isAssigning
+                      ? null
+                      : () => _showAssignAmbulanceDialog(
+                          context,
+                          request,
+                          activeShifts,
+                        ),
+                  icon: isAssigning
+                      ? const SizedBox(
+                          width: 18,
+                          height: 18,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            color: Colors.white,
+                          ),
+                        )
+                      : const Icon(Icons.local_shipping, size: 18),
+                  label: Text(
+                    isAssigning ? 'Asignando...' : 'Asignar Ambulancia',
+                  ),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color(0xFF1E3A5F),
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(vertical: 12),
+                  ),
+                ),
               ),
           ],
         ),
+      ),
+    );
+  }
+
+  void _showAssignAmbulanceDialog(
+    BuildContext context,
+    Map<String, dynamic> request,
+    List<Map<String, dynamic>> activeShifts,
+  ) {
+    final availableShifts = activeShifts
+        .where((s) => s['hasActiveEmergency'] != true)
+        .toList();
+
+    showDialog(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Seleccionar Ambulancia'),
+        content: SizedBox(
+          width: double.maxFinite,
+          child: availableShifts.isEmpty
+              ? const Text('No hay ambulancias disponibles')
+              : ListView.builder(
+                  shrinkWrap: true,
+                  itemCount: availableShifts.length,
+                  itemBuilder: (context, index) {
+                    final shift = availableShifts[index];
+                    final ambulance =
+                        shift['ambulance'] as Map<String, dynamic>?;
+                    final driver = shift['driver'] as Map<String, dynamic>?;
+
+                    return ListTile(
+                      leading: const CircleAvatar(
+                        backgroundColor: Color(0xFF1E3A5F),
+                        child: Icon(
+                          Icons.local_shipping,
+                          color: Colors.white,
+                          size: 20,
+                        ),
+                      ),
+                      title: Text(ambulance?['plate'] ?? 'Sin placa'),
+                      subtitle: Text(
+                        'Conductor: ${driver?['name'] ?? 'N/A'} ${driver?['lastname'] ?? ''}',
+                      ),
+                      onTap: () {
+                        Navigator.pop(dialogContext);
+                        this.context.read<CompanyHomeBloc>().add(
+                          AssignRequestEvent(
+                            requestId: request['id'],
+                            shiftId: shift['id'],
+                          ),
+                        );
+                      },
+                    );
+                  },
+                ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext),
+            child: const Text('Cancelar'),
+          ),
+        ],
       ),
     );
   }
@@ -443,130 +1339,52 @@ class _CompanyHomeViewState extends State<_CompanyHomeView> {
   Widget _buildShiftCard(Map<String, dynamic> shift) {
     final ambulance = shift['ambulance'] as Map<String, dynamic>?;
     final driver = shift['driver'] as Map<String, dynamic>?;
-    final plate = ambulance?['plate'] ?? 'N/A';
-    final type = ambulance?['type'] ?? 'N/A';
-    final driverName = driver != null ? '${driver['name']} ${driver['lastname']}' : 'Sin conductor';
-    final hasActiveEmergency = shift['hasActiveEmergency'] == true;
-    final emergencyStatus = shift['emergencyStatus'] as String?;
-
-    // Determinar color y texto según el estado
-    Color statusColor;
-    String statusText;
-    IconData statusIcon;
-
-    if (hasActiveEmergency) {
-      switch (emergencyStatus) {
-        case 'ASSIGNED':
-          statusColor = Colors.blue;
-          statusText = 'ASIGNADO';
-          statusIcon = Icons.assignment;
-          break;
-        case 'ON_THE_WAY':
-          statusColor = Colors.orange;
-          statusText = 'EN CAMINO';
-          statusIcon = Icons.directions_car;
-          break;
-        case 'ON_SITE':
-          statusColor = Colors.purple;
-          statusText = 'EN LUGAR';
-          statusIcon = Icons.location_on;
-          break;
-        case 'TRAVELLING':
-          statusColor = Colors.red;
-          statusText = 'TRASLADO';
-          statusIcon = Icons.local_hospital;
-          break;
-        default:
-          statusColor = Colors.red;
-          statusText = 'EN SERVICIO';
-          statusIcon = Icons.emergency;
-      }
-    } else {
-      statusColor = Colors.green;
-      statusText = 'DISPONIBLE';
-      statusIcon = Icons.check_circle;
-    }
+    final hasEmergency = shift['hasActiveEmergency'] == true;
+    final emergencyStatus = shift['emergencyStatus'];
 
     return Card(
       margin: const EdgeInsets.only(bottom: 12),
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
       child: ListTile(
         leading: CircleAvatar(
-          backgroundColor: hasActiveEmergency ? statusColor : const Color(0xFF1E3A5F),
-          child: Icon(hasActiveEmergency ? statusIcon : Icons.local_shipping, color: Colors.white),
+          backgroundColor: hasEmergency
+              ? Colors.orange[100]
+              : Colors.green[100],
+          child: Icon(
+            Icons.local_shipping,
+            color: hasEmergency ? Colors.orange : Colors.green,
+          ),
         ),
-        title: Text(plate, style: const TextStyle(fontWeight: FontWeight.bold)),
+        title: Text(
+          ambulance?['plate'] ?? 'Sin placa',
+          style: const TextStyle(fontWeight: FontWeight.bold),
+        ),
         subtitle: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text('Tipo: $type'),
-            Text('Conductor: $driverName'),
+            Text('Tipo: ${ambulance?['type'] ?? 'N/A'}'),
+            Text(
+              'Conductor: ${driver?['name'] ?? 'N/A'} ${driver?['lastname'] ?? ''}',
+            ),
           ],
         ),
         trailing: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
           decoration: BoxDecoration(
-            color: statusColor,
-            borderRadius: BorderRadius.circular(8),
+            color: hasEmergency ? Colors.orange : Colors.green,
+            borderRadius: BorderRadius.circular(20),
           ),
           child: Text(
-            statusText,
-            style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold),
+            hasEmergency ? (emergencyStatus ?? 'EN SERVICIO') : 'DISPONIBLE',
+            style: const TextStyle(
+              color: Colors.white,
+              fontSize: 11,
+              fontWeight: FontWeight.bold,
+            ),
           ),
         ),
-      ),
-    );
-  }
-
-  Color _getEmergencyColor(String type) {
-    switch (type.toUpperCase()) {
-      case 'ACCIDENTE':
-        return Colors.red;
-      case 'CARDIACO':
-        return Colors.purple;
-      case 'RESPIRATORIO':
-        return Colors.blue;
-      case 'TRAUMA':
-        return Colors.orange;
-      case 'PEDIATRICO':
-        return Colors.pink;
-      default:
-        return Colors.grey;
-    }
-  }
-
-  void _showAssignConfirmation(
-    BuildContext context,
-    int requestId,
-    int shiftId,
-    String plate,
-    String driverName,
-  ) {
-    showDialog(
-      context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: const Text('Confirmar Asignación'),
-        content: Text(
-          '¿Asignar la ambulancia $plate ($driverName) a esta emergencia?',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(dialogContext),
-            child: const Text('Cancelar'),
-          ),
-          ElevatedButton(
-            onPressed: () {
-              Navigator.pop(dialogContext);
-              context.read<CompanyHomeBloc>().add(
-                AssignRequestEvent(requestId: requestId, shiftId: shiftId),
-              );
-            },
-            style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF1E3A5F)),
-            child: const Text('Asignar', style: TextStyle(color: Colors.white)),
-          ),
-        ],
+        isThreeLine: true,
       ),
     );
   }
 }
-

@@ -2,6 +2,7 @@ import 'package:get_it/get_it.dart';
 import 'package:http/http.dart' as http;
 import 'package:medcar_frontend/src/data/datasources/remote/ambulances_remote_datasource.dart';
 import 'package:medcar_frontend/src/data/datasources/remote/auth_remote_datasource.dart';
+import 'package:medcar_frontend/src/data/datasources/remote/company_admin_remote_datasource.dart';
 import 'package:medcar_frontend/src/data/datasources/remote/driver_remote_datasource.dart';
 import 'package:medcar_frontend/src/data/datasources/remote/service_request_remote_datasource.dart';
 import 'package:medcar_frontend/src/data/datasources/remote/shifts_remote_datasource.dart';
@@ -23,18 +24,35 @@ Future<void> init() async {
   sl.registerLazySingleton(() => http.Client());
 
   // === DATA SOURCES (dependen de Externals) ===
-  sl.registerLazySingleton<AuthRemoteDataSource>(() => AuthRemoteDataSourceImpl(client: sl()));
-  sl.registerLazySingleton<ServiceRequestRemoteDataSource>(() => ServiceRequestRemoteDataSourceImpl(client: sl()));
-  sl.registerLazySingleton<ShiftsRemoteDataSource>(() => ShiftsRemoteDataSourceImpl(client: sl()));
-  sl.registerLazySingleton<AmbulancesRemoteDataSource>(() => AmbulancesRemoteDataSourceImpl(client: sl()));
-  sl.registerLazySingleton<DriverRemoteDataSource>(() => DriverRemoteDataSourceImpl(client: sl()));
+  sl.registerLazySingleton<AuthRemoteDataSource>(
+    () => AuthRemoteDataSourceImpl(client: sl()),
+  );
+  sl.registerLazySingleton<ServiceRequestRemoteDataSource>(
+    () => ServiceRequestRemoteDataSourceImpl(client: sl()),
+  );
+  sl.registerLazySingleton<ShiftsRemoteDataSource>(
+    () => ShiftsRemoteDataSourceImpl(client: sl()),
+  );
+  sl.registerLazySingleton<AmbulancesRemoteDataSource>(
+    () => AmbulancesRemoteDataSourceImpl(client: sl()),
+  );
+  sl.registerLazySingleton<DriverRemoteDataSource>(
+    () => DriverRemoteDataSourceImpl(client: sl()),
+  );
+  sl.registerLazySingleton<CompanyAdminRemoteDataSource>(
+    () => CompanyAdminRemoteDataSourceImpl(client: sl()),
+  );
 
   // === REPOSITORIES (dependen de Data Sources) ===
-  sl.registerLazySingleton<AuthRepository>(() => AuthRepositoryImpl(remoteDataSource: sl()));
-  sl.registerLazySingleton<ServiceRequestRepository>(() => ServiceRequestRepositoryImpl(
-    remoteDataSource: sl(),
-    authRepository: sl(),
-  ));
+  sl.registerLazySingleton<AuthRepository>(
+    () => AuthRepositoryImpl(remoteDataSource: sl()),
+  );
+  sl.registerLazySingleton<ServiceRequestRepository>(
+    () => ServiceRequestRepositoryImpl(
+      remoteDataSource: sl(),
+      authRepository: sl(),
+    ),
+  );
 
   // === USE CASES (dependen de Repositories) ===
   sl.registerFactory(() => LoginUseCase(sl()));
