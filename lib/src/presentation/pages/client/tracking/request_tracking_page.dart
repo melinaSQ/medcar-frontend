@@ -6,6 +6,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:medcar_frontend/dependency_injection.dart';
+import 'package:medcar_frontend/src/data/datasources/remote/ratings_remote_datasource.dart';
 import 'package:medcar_frontend/src/data/services/directions_service.dart';
 import 'package:medcar_frontend/src/data/services/socket_service.dart';
 import 'package:medcar_frontend/src/domain/repositories/auth_repository.dart';
@@ -45,6 +46,11 @@ class _RequestTrackingPageState extends State<RequestTrackingPage> {
   // Datos del conductor y ambulancia para calificación
   String? _driverName;
   String? _ambulancePlate;
+  int? _driverId;
+
+  // Calificación promedio del conductor
+  double? _driverRating;
+  int _driverRatingCount = 0;
 
   Set<Marker> _markers = {};
   Set<Polyline> _polylines = {};
@@ -96,7 +102,9 @@ class _RequestTrackingPageState extends State<RequestTrackingPage> {
         }
       });
 
-      _assignedSub = _socketService.requestAssignedStream.listen((update) {
+      _assignedSub = _socketService.requestAssignedStream.listen((
+        update,
+      ) async {
         // Extraer datos del conductor y ambulancia
         final requestDetails = update.requestDetails;
         final shift = requestDetails['shift'] as Map<String, dynamic>?;
@@ -106,6 +114,11 @@ class _RequestTrackingPageState extends State<RequestTrackingPage> {
           if (driver != null) {
             _driverName = '${driver['name'] ?? ''} ${driver['lastname'] ?? ''}'
                 .trim();
+            _driverId = driver['id'];
+            // Obtener promedio de calificaciones del conductor
+            if (_driverId != null) {
+              await _loadDriverRating(_driverId!);
+            }
           }
           if (ambulance != null) {
             _ambulancePlate = ambulance['plate'];
@@ -404,6 +417,29 @@ class _RequestTrackingPageState extends State<RequestTrackingPage> {
     );
   }
 
+  Future<void> _loadDriverRating(int driverId) async {
+    try {
+      final authRepo = sl<AuthRepository>();
+      final session = await authRepo.getUserSession();
+      if (session != null) {
+        final ratingsDs = sl<RatingsRemoteDataSource>();
+        final result = await ratingsDs.getAverageRating(
+          userId: driverId,
+          token: session.accessToken,
+        );
+        if (mounted) {
+          setState(() {
+            _driverRating = (result['average'] as num?)?.toDouble();
+            _driverRatingCount = result['count'] ?? 0;
+          });
+        }
+      }
+    } catch (e) {
+      // Ignorar error silenciosamente
+      print('Error cargando calificación del conductor: $e');
+    }
+  }
+
   @override
   void dispose() {
     _connectionSub?.cancel();
@@ -499,6 +535,77 @@ class _RequestTrackingPageState extends State<RequestTrackingPage> {
               ),
             ],
           ),
+
+          // Información del conductor (cuando está asignado)
+          if (_driverName != null && _currentStatus != 'SEARCHING') ...[
+            const SizedBox(height: 12),
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: Colors.blue[50],
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: Colors.blue[200]!),
+              ),
+              child: Row(
+                children: [
+                  const CircleAvatar(
+                    backgroundColor: Colors.blue,
+                    radius: 20,
+                    child: Icon(Icons.person, color: Colors.white, size: 20),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Conductor: $_driverName',
+                          style: const TextStyle(
+                            fontWeight: FontWeight.bold,
+                            fontSize: 14,
+                          ),
+                        ),
+                        if (_driverRating != null && _driverRating! > 0) ...[
+                          const SizedBox(height: 4),
+                          Row(
+                            children: [
+                              ...List.generate(5, (index) {
+                                return Icon(
+                                  index < _driverRating!.round()
+                                      ? Icons.star
+                                      : Icons.star_border,
+                                  size: 14,
+                                  color: Colors.amber,
+                                );
+                              }),
+                              const SizedBox(width: 6),
+                              Text(
+                                '${_driverRating!.toStringAsFixed(1)} (${_driverRatingCount})',
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  color: Colors.grey[700],
+                                ),
+                              ),
+                            ],
+                          ),
+                        ] else if (_driverRatingCount == 0) ...[
+                          const SizedBox(height: 4),
+                          Text(
+                            'Sin calificaciones aún',
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: Colors.grey[600],
+                              fontStyle: FontStyle.italic,
+                            ),
+                          ),
+                        ],
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
 
           // ETA y distancia (solo si hay ambulancia en camino)
           if (_eta != null &&
