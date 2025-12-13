@@ -73,13 +73,30 @@ class _DriverHomeViewState extends State<_DriverHomeView> {
       _socketService.connect(session.accessToken);
 
       // Escuchar nuevas misiones
-      _missionSub = _socketService.onNewMission.listen((mission) {
+      _missionSub = _socketService.onNewMission.listen((mission) async {
         if (mounted) {
           // Limpiar datos de misión anterior
           _clearMissionData();
 
           context.read<DriverHomeBloc>().receiveMission(mission);
           _showMissionDialog(mission);
+
+          // Obtener ubicación actual y ruta inmediatamente
+          try {
+            final position = await Geolocator.getCurrentPosition(
+              desiredAccuracy: LocationAccuracy.high,
+            );
+            if (mounted) {
+              setState(() {
+                _driverPosition = LatLng(position.latitude, position.longitude);
+              });
+              // Pequeño delay para asegurar que el BLoC tenga la misión
+              await Future.delayed(const Duration(milliseconds: 100));
+              _updateRouteToClient();
+            }
+          } catch (e) {
+            print('❌ Error obteniendo ubicación inicial: $e');
+          }
         }
       });
 
@@ -282,22 +299,44 @@ class _DriverHomeViewState extends State<_DriverHomeView> {
   }
 
   Future<void> _updateRouteToClient() async {
-    if (_driverPosition == null) return;
+    if (_driverPosition == null) {
+      print('❌ _updateRouteToClient: driverPosition es null');
+      return;
+    }
 
     final bloc = context.read<DriverHomeBloc>();
     final state = bloc.state;
 
-    if (state.currentMission == null) return;
+    if (state.currentMission == null) {
+      print('❌ _updateRouteToClient: currentMission es null');
+      return;
+    }
 
-    final originLocation = state.currentMission!['originLocation'];
-    if (originLocation == null) return;
+    // Los datos pueden venir directos o dentro de requestDetails (desde WebSocket)
+    final mission = state.currentMission!;
+    final requestDetails =
+        mission['requestDetails'] as Map<String, dynamic>? ?? mission;
+
+    final originLocation =
+        requestDetails['originLocation'] as Map<String, dynamic>?;
+    if (originLocation == null) {
+      print('❌ _updateRouteToClient: originLocation es null');
+      return;
+    }
 
     final coordinates = originLocation['coordinates'] as List?;
-    if (coordinates == null || coordinates.length < 2) return;
+    if (coordinates == null || coordinates.length < 2) {
+      print('❌ _updateRouteToClient: coordinates inválidas');
+      return;
+    }
 
     final clientPos = LatLng(
-      coordinates[1] as double,
-      coordinates[0] as double,
+      (coordinates[1] as num).toDouble(),
+      (coordinates[0] as num).toDouble(),
+    );
+
+    print(
+      '🗺️ Obteniendo ruta: Driver(${_driverPosition!.latitude}, ${_driverPosition!.longitude}) -> Client(${clientPos.latitude}, ${clientPos.longitude})',
     );
 
     try {
@@ -320,6 +359,10 @@ class _DriverHomeViewState extends State<_DriverHomeView> {
           };
         });
         print('🗺️ Ruta actualizada: $_distance, ETA: $_eta');
+      } else {
+        print(
+          '❌ _updateRouteToClient: result es null o widget no está mounted',
+        );
       }
     } catch (e) {
       print('❌ Error obteniendo ruta: $e');
