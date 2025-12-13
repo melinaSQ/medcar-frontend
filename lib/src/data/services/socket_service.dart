@@ -33,10 +33,7 @@ class RequestUpdate {
   final String message;
   final Map<String, dynamic> requestDetails;
 
-  RequestUpdate({
-    required this.message,
-    required this.requestDetails,
-  });
+  RequestUpdate({required this.message, required this.requestDetails});
 
   factory RequestUpdate.fromJson(Map<String, dynamic> json) {
     return RequestUpdate(
@@ -56,20 +53,32 @@ class SocketService {
   // Streams para emitir eventos
   final _connectionController = StreamController<bool>.broadcast();
   final _authController = StreamController<bool>.broadcast();
-  final _requestAssignedController = StreamController<RequestUpdate>.broadcast();
-  final _ambulanceLocationController = StreamController<AmbulanceLocation>.broadcast();
+  final _requestAssignedController =
+      StreamController<RequestUpdate>.broadcast();
+  final _ambulanceLocationController =
+      StreamController<AmbulanceLocation>.broadcast();
   final _statusUpdateController = StreamController<RequestUpdate>.broadcast();
-  final _newMissionController = StreamController<Map<String, dynamic>>.broadcast();
-  final _newServiceRequestController = StreamController<Map<String, dynamic>>.broadcast();
+  final _newMissionController =
+      StreamController<Map<String, dynamic>>.broadcast();
+  final _newServiceRequestController =
+      StreamController<Map<String, dynamic>>.broadcast();
+  final _requestCanceledController =
+      StreamController<RequestUpdate>.broadcast();
 
   // Getters para los streams
   Stream<bool> get connectionStream => _connectionController.stream;
   Stream<bool> get authStream => _authController.stream;
-  Stream<RequestUpdate> get requestAssignedStream => _requestAssignedController.stream;
-  Stream<AmbulanceLocation> get ambulanceLocationStream => _ambulanceLocationController.stream;
-  Stream<RequestUpdate> get statusUpdateStream => _statusUpdateController.stream;
+  Stream<RequestUpdate> get requestAssignedStream =>
+      _requestAssignedController.stream;
+  Stream<AmbulanceLocation> get ambulanceLocationStream =>
+      _ambulanceLocationController.stream;
+  Stream<RequestUpdate> get statusUpdateStream =>
+      _statusUpdateController.stream;
   Stream<Map<String, dynamic>> get onNewMission => _newMissionController.stream;
-  Stream<Map<String, dynamic>> get onNewServiceRequest => _newServiceRequestController.stream;
+  Stream<Map<String, dynamic>> get onNewServiceRequest =>
+      _newServiceRequestController.stream;
+  Stream<RequestUpdate> get onRequestCanceled =>
+      _requestCanceledController.stream;
 
   bool get isConnected => _isConnected;
   bool get isAuthenticated => _isAuthenticated;
@@ -147,7 +156,9 @@ class SocketService {
     _socket!.on('ambulance_location_updated', (data) {
       print('📍 Ubicación ambulancia: $data');
       try {
-        final location = AmbulanceLocation.fromJson(data as Map<String, dynamic>);
+        final location = AmbulanceLocation.fromJson(
+          data as Map<String, dynamic>,
+        );
         _ambulanceLocationController.add(location);
       } catch (e) {
         print('Error parseando ambulance_location_updated: $e');
@@ -191,6 +202,9 @@ class SocketService {
       try {
         final update = RequestUpdate.fromJson(data as Map<String, dynamic>);
         _statusUpdateController.add(update);
+        _requestCanceledController.add(
+          update,
+        ); // También emitir al stream dedicado
       } catch (e) {
         print('Error parseando request_canceled: $e');
       }
@@ -199,14 +213,18 @@ class SocketService {
 
   void _authenticate(String token) {
     if (_socket == null || !_isConnected) return;
-    
+
     final payload = json.encode({'token': token});
     _socket!.emit('authenticate', payload);
     print('🔐 Enviando autenticación WebSocket...');
   }
 
   /// Enviar ubicación del conductor al servidor
-  void sendLocation({required int shiftId, required double lat, required double lon}) {
+  void sendLocation({
+    required int shiftId,
+    required double lat,
+    required double lon,
+  }) {
     if (_socket == null || !_isConnected || !_isAuthenticated) {
       print('⚠️ No se puede enviar ubicación: no conectado o autenticado');
       return;
@@ -239,6 +257,6 @@ class SocketService {
     _statusUpdateController.close();
     _newMissionController.close();
     _newServiceRequestController.close();
+    _requestCanceledController.close();
   }
 }
-

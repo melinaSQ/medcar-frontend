@@ -21,3 +21,4 @@ class UpdateStatusEvent extends DriverHomeEvent {
 
 class LogoutEvent extends DriverHomeEvent {}
 
+class MissionCanceledEvent extends DriverHomeEvent {}

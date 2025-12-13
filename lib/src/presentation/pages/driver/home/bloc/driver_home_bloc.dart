@@ -1,5 +1,7 @@
 // lib/src/presentation/pages/driver/home/bloc/driver_home_bloc.dart
 
+// ignore_for_file: avoid_print
+
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:medcar_frontend/src/data/datasources/remote/driver_remote_datasource.dart';
 import 'package:medcar_frontend/src/domain/repositories/auth_repository.dart';
@@ -18,6 +20,20 @@ class DriverHomeBloc extends Bloc<DriverHomeEvent, DriverHomeState> {
     on<UpdateStatusEvent>(_onUpdateStatus);
     on<LogoutEvent>(_onLogout);
     on<_ReceiveMissionEvent>(_onReceiveMission);
+    on<MissionCanceledEvent>(_onMissionCanceled);
+  }
+
+  void _onMissionCanceled(
+    MissionCanceledEvent event,
+    Emitter<DriverHomeState> emit,
+  ) {
+    print('🚫 BLoC: Procesando MissionCanceledEvent');
+    print(
+      '🚫 BLoC: Estado anterior: ${state.status}, mission: ${state.currentMission != null}',
+    );
+    // Volver al estado de turno activo sin misión
+    emit(state.copyWith(status: DriverHomeStatus.hasShift, clearMission: true));
+    print('🚫 BLoC: Nuevo estado emitido: hasShift, clearMission: true');
   }
 
   void _onReceiveMission(

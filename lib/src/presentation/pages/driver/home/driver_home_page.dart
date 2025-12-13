@@ -42,12 +42,17 @@ class _DriverHomeViewState extends State<_DriverHomeView> {
   final SocketService _socketService = SocketService();
   final TextEditingController _plateController = TextEditingController();
   final TextEditingController _codeController = TextEditingController();
-  
+
   GoogleMapController? _mapController;
   Timer? _locationTimer;
   StreamSubscription? _missionSub;
+  StreamSubscription? _canceledSub;
+  StreamSubscription? _statusUpdateSub;
   int? _currentShiftId;
-  
+
+  // Flag para evitar procesar cancelación múltiples veces
+  bool _isProcessingCancellation = false;
+
   // Ruta y ETA
   Set<Polyline> _polylines = {};
   String? _eta;
@@ -63,18 +68,92 @@ class _DriverHomeViewState extends State<_DriverHomeView> {
   Future<void> _initWebSocket() async {
     final authRepo = sl<AuthRepository>();
     final session = await authRepo.getUserSession();
-    
+
     if (session != null) {
       _socketService.connect(session.accessToken);
-      
+
       // Escuchar nuevas misiones
       _missionSub = _socketService.onNewMission.listen((mission) {
         if (mounted) {
+          // Limpiar datos de misión anterior
+          _clearMissionData();
+
           context.read<DriverHomeBloc>().receiveMission(mission);
           _showMissionDialog(mission);
         }
       });
+
+      // Escuchar cancelaciones de solicitudes
+      _canceledSub = _socketService.onRequestCanceled.listen((update) {
+        print(
+          '🚫 Conductor: Evento request_canceled recibido: ${update.status}',
+        );
+        if (mounted && !_isProcessingCancellation) {
+          print('🚫 Conductor: Widget mounted, procesando cancelación...');
+          _handleMissionCanceled();
+        }
+      });
+
+      // También escuchar cambios de estado que indiquen cancelación
+      _statusUpdateSub = _socketService.statusUpdateStream.listen((update) {
+        print('📊 Conductor: Estado actualizado: ${update.status}');
+        if (mounted &&
+            update.status == 'CANCELED' &&
+            !_isProcessingCancellation) {
+          print('🚫 Conductor: Detectada cancelación via statusUpdateStream');
+          _handleMissionCanceled();
+        }
+      });
     }
+  }
+
+  /// Limpia los datos de la misión actual (polylines, ETA, distancia)
+  void _clearMissionData() {
+    setState(() {
+      _polylines = {};
+      _eta = null;
+      _distance = null;
+      _driverPosition = null;
+    });
+    _locationTimer?.cancel();
+    _locationTimer = null;
+  }
+
+  /// Maneja cuando la misión es cancelada por el cliente
+  void _handleMissionCanceled() {
+    // Evitar procesar múltiples veces
+    if (_isProcessingCancellation) {
+      print('🚫 Ya se está procesando la cancelación, ignorando...');
+      return;
+    }
+    _isProcessingCancellation = true;
+
+    print('🚫 Procesando cancelación de misión...');
+
+    // Limpiar datos de la misión
+    _clearMissionData();
+
+    // Cerrar TODOS los diálogos abiertos
+    while (Navigator.of(context).canPop()) {
+      Navigator.of(context).pop();
+    }
+
+    // Actualizar el BLoC para volver al estado de turno sin misión
+    context.read<DriverHomeBloc>().add(MissionCanceledEvent());
+
+    // Mostrar notificación al conductor
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('❌ La solicitud fue cancelada por el cliente'),
+        backgroundColor: Colors.orange,
+        duration: Duration(seconds: 4),
+      ),
+    );
+
+    // Resetear el flag después de un pequeño delay
+    Future.delayed(const Duration(milliseconds: 500), () {
+      _isProcessingCancellation = false;
+    });
   }
 
   void _showMissionDialog(Map<String, dynamic> mission) {
@@ -82,7 +161,9 @@ class _DriverHomeViewState extends State<_DriverHomeView> {
     if (requestDetails == null) return;
 
     final client = requestDetails['client'] as Map<String, dynamic>?;
-    final clientName = client != null ? '${client['name']} ${client['lastname']}' : 'Cliente';
+    final clientName = client != null
+        ? '${client['name']} ${client['lastname']}'
+        : 'Cliente';
     final emergencyType = requestDetails['emergencyType'] ?? 'Emergencia';
 
     showDialog(
@@ -91,7 +172,11 @@ class _DriverHomeViewState extends State<_DriverHomeView> {
       builder: (context) => AlertDialog(
         title: Row(
           children: [
-            const Icon(Icons.notification_important, color: Colors.red, size: 30),
+            const Icon(
+              Icons.notification_important,
+              color: Colors.red,
+              size: 30,
+            ),
             const SizedBox(width: 10),
             const Text('¡Nueva Misión!'),
           ],
@@ -100,7 +185,10 @@ class _DriverHomeViewState extends State<_DriverHomeView> {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text('Tipo: $emergencyType', style: const TextStyle(fontWeight: FontWeight.bold)),
+            Text(
+              'Tipo: $emergencyType',
+              style: const TextStyle(fontWeight: FontWeight.bold),
+            ),
             const SizedBox(height: 8),
             Text('Cliente: $clientName'),
           ],
@@ -121,7 +209,7 @@ class _DriverHomeViewState extends State<_DriverHomeView> {
 
   Future<void> _startLocationUpdates() async {
     print('🚀 _startLocationUpdates called, shiftId: $_currentShiftId');
-    
+
     if (_currentShiftId == null) {
       print('❌ shiftId is null, cannot send location');
       return;
@@ -136,7 +224,9 @@ class _DriverHomeViewState extends State<_DriverHomeView> {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
-              content: Text('⚠️ Se requieren permisos de ubicación para el seguimiento'),
+              content: Text(
+                '⚠️ Se requieren permisos de ubicación para el seguimiento',
+              ),
               backgroundColor: Colors.orange,
             ),
           );
@@ -150,7 +240,9 @@ class _DriverHomeViewState extends State<_DriverHomeView> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text('⚠️ Habilita los permisos de ubicación en Configuración'),
+            content: Text(
+              '⚠️ Habilita los permisos de ubicación en Configuración',
+            ),
             backgroundColor: Colors.red,
           ),
         );
@@ -167,13 +259,15 @@ class _DriverHomeViewState extends State<_DriverHomeView> {
         final position = await Geolocator.getCurrentPosition(
           desiredAccuracy: LocationAccuracy.high,
         );
-        print('📍 Sending location: lat=${position.latitude}, lon=${position.longitude}, shiftId=$_currentShiftId');
+        print(
+          '📍 Sending location: lat=${position.latitude}, lon=${position.longitude}, shiftId=$_currentShiftId',
+        );
         _socketService.sendLocation(
           shiftId: _currentShiftId!,
           lat: position.latitude,
           lon: position.longitude,
         );
-        
+
         // Actualizar posición del conductor y ruta
         if (mounted) {
           setState(() {
@@ -189,26 +283,29 @@ class _DriverHomeViewState extends State<_DriverHomeView> {
 
   Future<void> _updateRouteToClient() async {
     if (_driverPosition == null) return;
-    
+
     final bloc = context.read<DriverHomeBloc>();
     final state = bloc.state;
-    
+
     if (state.currentMission == null) return;
-    
+
     final originLocation = state.currentMission!['originLocation'];
     if (originLocation == null) return;
-    
+
     final coordinates = originLocation['coordinates'] as List?;
     if (coordinates == null || coordinates.length < 2) return;
-    
-    final clientPos = LatLng(coordinates[1] as double, coordinates[0] as double);
-    
+
+    final clientPos = LatLng(
+      coordinates[1] as double,
+      coordinates[0] as double,
+    );
+
     try {
       final result = await DirectionsService.getDirections(
         origin: _driverPosition!,
         destination: clientPos,
       );
-      
+
       if (result != null && mounted) {
         setState(() {
           _eta = result.duration;
@@ -240,6 +337,8 @@ class _DriverHomeViewState extends State<_DriverHomeView> {
     _codeController.dispose();
     _locationTimer?.cancel();
     _missionSub?.cancel();
+    _canceledSub?.cancel();
+    _statusUpdateSub?.cancel();
     _socketService.disconnect();
     _mapController?.dispose();
     super.dispose();
@@ -251,7 +350,10 @@ class _DriverHomeViewState extends State<_DriverHomeView> {
       listener: (context, state) {
         if (state.errorMessage != null) {
           ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text(state.errorMessage!), backgroundColor: Colors.red),
+            SnackBar(
+              content: Text(state.errorMessage!),
+              backgroundColor: Colors.red,
+            ),
           );
         }
         // Obtener shiftId del turno activo o de la misión
@@ -262,8 +364,10 @@ class _DriverHomeViewState extends State<_DriverHomeView> {
         // También puede venir del shift dentro de la misión
         if (state.currentMission != null) {
           print('📋 Mission data: ${state.currentMission}');
-          final requestDetails = state.currentMission!['requestDetails'] as Map<String, dynamic>?;
-          final shiftData = requestDetails?['shift'] ?? state.currentMission!['shift'];
+          final requestDetails =
+              state.currentMission!['requestDetails'] as Map<String, dynamic>?;
+          final shiftData =
+              requestDetails?['shift'] ?? state.currentMission!['shift'];
           if (shiftData != null && shiftData is Map<String, dynamic>) {
             _currentShiftId = shiftData['id'];
             print('🔑 ShiftId from mission: $_currentShiftId');
@@ -276,7 +380,10 @@ class _DriverHomeViewState extends State<_DriverHomeView> {
           appBar: AppBar(
             title: Text(
               'Hola, ${state.userName}',
-              style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+              style: const TextStyle(
+                color: Colors.white,
+                fontWeight: FontWeight.bold,
+              ),
             ),
             backgroundColor: const Color(0xFF2E7D32),
             actions: [
@@ -298,7 +405,11 @@ class _DriverHomeViewState extends State<_DriverHomeView> {
                 icon: const Icon(Icons.logout, color: Colors.white),
                 onPressed: () {
                   context.read<DriverHomeBloc>().add(LogoutEvent());
-                  Navigator.pushNamedAndRemoveUntil(context, 'login', (route) => false);
+                  Navigator.pushNamedAndRemoveUntil(
+                    context,
+                    'login',
+                    (route) => false,
+                  );
                 },
               ),
             ],
@@ -310,7 +421,12 @@ class _DriverHomeViewState extends State<_DriverHomeView> {
   }
 
   Widget _buildBody(BuildContext context, DriverHomeState state) {
-    if (state.status == DriverHomeStatus.loading) {
+    print(
+      '🔄 Building body - Status: ${state.status}, Mission: ${state.currentMission != null}',
+    );
+
+    if (state.status == DriverHomeStatus.loading ||
+        state.status == DriverHomeStatus.updating) {
       return const Center(child: CircularProgressIndicator());
     }
 
@@ -318,10 +434,13 @@ class _DriverHomeViewState extends State<_DriverHomeView> {
       return _buildNoShiftView(context);
     }
 
-    if (state.status == DriverHomeStatus.hasMission || state.currentMission != null) {
+    // Solo mostrar vista de misión si el status es hasMission
+    // (no usar currentMission != null porque puede quedar residual)
+    if (state.status == DriverHomeStatus.hasMission) {
       return _buildMissionView(context, state);
     }
 
+    // hasShift o cualquier otro estado
     return _buildHasShiftView(context, state);
   }
 
@@ -331,13 +450,19 @@ class _DriverHomeViewState extends State<_DriverHomeView> {
         padding: const EdgeInsets.all(24),
         child: Card(
           elevation: 4,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16),
+          ),
           child: Padding(
             padding: const EdgeInsets.all(24),
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                const Icon(Icons.local_shipping, size: 80, color: Color(0xFF2E7D32)),
+                const Icon(
+                  Icons.local_shipping,
+                  size: 80,
+                  color: Color(0xFF2E7D32),
+                ),
                 const SizedBox(height: 16),
                 const Text(
                   'Iniciar Turno',
@@ -355,7 +480,9 @@ class _DriverHomeViewState extends State<_DriverHomeView> {
                   decoration: InputDecoration(
                     labelText: 'Placa de la ambulancia',
                     prefixIcon: const Icon(Icons.directions_car),
-                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
                   ),
                   textCapitalization: TextCapitalization.characters,
                 ),
@@ -365,7 +492,9 @@ class _DriverHomeViewState extends State<_DriverHomeView> {
                   decoration: InputDecoration(
                     labelText: 'Código de turno',
                     prefixIcon: const Icon(Icons.qr_code),
-                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
                   ),
                   textCapitalization: TextCapitalization.characters,
                 ),
@@ -374,24 +503,34 @@ class _DriverHomeViewState extends State<_DriverHomeView> {
                   width: double.infinity,
                   child: ElevatedButton.icon(
                     onPressed: () {
-                      if (_plateController.text.isEmpty || _codeController.text.isEmpty) {
+                      if (_plateController.text.isEmpty ||
+                          _codeController.text.isEmpty) {
                         ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(content: Text('Completa todos los campos')),
+                          const SnackBar(
+                            content: Text('Completa todos los campos'),
+                          ),
                         );
                         return;
                       }
-                      context.read<DriverHomeBloc>().add(StartShiftEvent(
-                        plate: _plateController.text.trim(),
-                        code: _codeController.text.trim(),
-                      ));
+                      context.read<DriverHomeBloc>().add(
+                        StartShiftEvent(
+                          plate: _plateController.text.trim(),
+                          code: _codeController.text.trim(),
+                        ),
+                      );
                     },
                     icon: const Icon(Icons.play_arrow),
-                    label: const Text('Iniciar Turno', style: TextStyle(fontSize: 18)),
+                    label: const Text(
+                      'Iniciar Turno',
+                      style: TextStyle(fontSize: 18),
+                    ),
                     style: ElevatedButton.styleFrom(
                       backgroundColor: const Color(0xFF2E7D32),
                       foregroundColor: Colors.white,
                       padding: const EdgeInsets.symmetric(vertical: 16),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
                     ),
                   ),
                 ),
@@ -415,16 +554,25 @@ class _DriverHomeViewState extends State<_DriverHomeView> {
           children: [
             Card(
               elevation: 4,
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(16),
+              ),
               child: Padding(
                 padding: const EdgeInsets.all(24),
                 child: Column(
                   children: [
-                    const Icon(Icons.check_circle, size: 80, color: Color(0xFF2E7D32)),
+                    const Icon(
+                      Icons.check_circle,
+                      size: 80,
+                      color: Color(0xFF2E7D32),
+                    ),
                     const SizedBox(height: 16),
                     const Text(
                       'Turno Activo',
-                      style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
+                      style: TextStyle(
+                        fontSize: 24,
+                        fontWeight: FontWeight.bold,
+                      ),
                     ),
                     const SizedBox(height: 8),
                     Text(
@@ -445,7 +593,10 @@ class _DriverHomeViewState extends State<_DriverHomeView> {
                           const SizedBox(width: 8),
                           const Text(
                             'Esperando asignación...',
-                            style: TextStyle(color: Colors.blue, fontWeight: FontWeight.w500),
+                            style: TextStyle(
+                              color: Colors.blue,
+                              fontWeight: FontWeight.w500,
+                            ),
                           ),
                         ],
                       ),
@@ -460,11 +611,16 @@ class _DriverHomeViewState extends State<_DriverHomeView> {
               child: OutlinedButton.icon(
                 onPressed: () => _showEndShiftDialog(context),
                 icon: const Icon(Icons.stop, color: Colors.red),
-                label: const Text('Finalizar Turno', style: TextStyle(color: Colors.red)),
+                label: const Text(
+                  'Finalizar Turno',
+                  style: TextStyle(color: Colors.red),
+                ),
                 style: OutlinedButton.styleFrom(
                   side: const BorderSide(color: Colors.red),
                   padding: const EdgeInsets.symmetric(vertical: 16),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
                 ),
               ),
             ),
@@ -479,13 +635,17 @@ class _DriverHomeViewState extends State<_DriverHomeView> {
     if (mission == null) return _buildHasShiftView(context, state);
 
     // Los datos pueden venir directos o dentro de requestDetails (desde WebSocket)
-    final requestDetails = mission['requestDetails'] as Map<String, dynamic>? ?? mission;
-    
+    final requestDetails =
+        mission['requestDetails'] as Map<String, dynamic>? ?? mission;
+
     final client = requestDetails['client'] as Map<String, dynamic>?;
-    final clientName = client != null ? '${client['name']} ${client['lastname']}' : 'Cliente';
+    final clientName = client != null
+        ? '${client['name']} ${client['lastname']}'
+        : 'Cliente';
     final clientPhone = client?['phone'] ?? 'N/A';
     final emergencyType = requestDetails['emergencyType'] ?? 'N/A';
-    final description = requestDetails['originDescription'] ?? 'Sin descripción';
+    final description =
+        requestDetails['originDescription'] ?? 'Sin descripción';
     final status = requestDetails['status'] ?? 'ASSIGNED';
     final location = requestDetails['originLocation'] as Map<String, dynamic>?;
     final coordinates = location?['coordinates'] as List<dynamic>?;
@@ -503,20 +663,30 @@ class _DriverHomeViewState extends State<_DriverHomeView> {
               Row(
                 children: [
                   Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 6,
+                    ),
                     decoration: BoxDecoration(
                       color: Colors.white.withOpacity(0.2),
                       borderRadius: BorderRadius.circular(20),
                     ),
                     child: Text(
                       emergencyType,
-                      style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontWeight: FontWeight.bold,
+                      ),
                     ),
                   ),
                   const Spacer(),
                   Text(
                     _getStatusText(status),
-                    style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16),
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.bold,
+                      fontSize: 16,
+                    ),
                   ),
                 ],
               ),
@@ -525,26 +695,35 @@ class _DriverHomeViewState extends State<_DriverHomeView> {
                 children: [
                   const Icon(Icons.person, color: Colors.white, size: 20),
                   const SizedBox(width: 8),
-                  Text(clientName, style: const TextStyle(color: Colors.white, fontSize: 16)),
+                  Text(
+                    clientName,
+                    style: const TextStyle(color: Colors.white, fontSize: 16),
+                  ),
                 ],
               ),
               Row(
                 children: [
                   const Icon(Icons.phone, color: Colors.white, size: 20),
                   const SizedBox(width: 8),
-                  Text(clientPhone, style: const TextStyle(color: Colors.white)),
+                  Text(
+                    clientPhone,
+                    style: const TextStyle(color: Colors.white),
+                  ),
                 ],
               ),
               if (description != 'Sin descripción') ...[
                 const SizedBox(height: 4),
-                Text(description, style: TextStyle(color: Colors.white.withOpacity(0.9))),
+                Text(
+                  description,
+                  style: TextStyle(color: Colors.white.withOpacity(0.9)),
+                ),
               ],
             ],
           ),
         ),
 
         // ETA y distancia
-        if (_eta != null && _distance != null) 
+        if (_eta != null && _distance != null)
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
             color: Colors.white,
@@ -553,16 +732,26 @@ class _DriverHomeViewState extends State<_DriverHomeView> {
               children: [
                 Row(
                   children: [
-                    const Icon(Icons.access_time, color: Color(0xFF2E7D32), size: 20),
+                    const Icon(
+                      Icons.access_time,
+                      color: Color(0xFF2E7D32),
+                      size: 20,
+                    ),
                     const SizedBox(width: 8),
-                    Text(_eta!, style: const TextStyle(fontWeight: FontWeight.bold)),
+                    Text(
+                      _eta!,
+                      style: const TextStyle(fontWeight: FontWeight.bold),
+                    ),
                   ],
                 ),
                 Row(
                   children: [
                     const Icon(Icons.route, color: Color(0xFF2E7D32), size: 20),
                     const SizedBox(width: 8),
-                    Text(_distance!, style: const TextStyle(fontWeight: FontWeight.bold)),
+                    Text(
+                      _distance!,
+                      style: const TextStyle(fontWeight: FontWeight.bold),
+                    ),
                   ],
                 ),
               ],
@@ -582,14 +771,18 @@ class _DriverHomeViewState extends State<_DriverHomeView> {
                     Marker(
                       markerId: const MarkerId('client'),
                       position: LatLng(coordinates[1], coordinates[0]),
-                      icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueRed),
+                      icon: BitmapDescriptor.defaultMarkerWithHue(
+                        BitmapDescriptor.hueRed,
+                      ),
                       infoWindow: InfoWindow(title: 'Cliente: $clientName'),
                     ),
                     if (_driverPosition != null)
                       Marker(
                         markerId: const MarkerId('driver'),
                         position: _driverPosition!,
-                        icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueBlue),
+                        icon: BitmapDescriptor.defaultMarkerWithHue(
+                          BitmapDescriptor.hueBlue,
+                        ),
                         infoWindow: const InfoWindow(title: 'Tu ubicación'),
                       ),
                   },
@@ -619,11 +812,18 @@ class _DriverHomeViewState extends State<_DriverHomeView> {
                       ? const SizedBox(
                           width: 24,
                           height: 24,
-                          child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2),
+                          child: CircularProgressIndicator(
+                            color: Colors.white,
+                            strokeWidth: 2,
+                          ),
                         )
                       : Text(
                           _getNextStatusAction(status),
-                          style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold),
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 16,
+                            fontWeight: FontWeight.bold,
+                          ),
                         ),
                 ),
               ),
@@ -635,9 +835,11 @@ class _DriverHomeViewState extends State<_DriverHomeView> {
   }
 
   void _updateStatus(BuildContext context, String currentStatus) {
-    print('🔄 _updateStatus called with: $currentStatus, shiftId: $_currentShiftId');
+    print(
+      '🔄 _updateStatus called with: $currentStatus, shiftId: $_currentShiftId',
+    );
     String? nextStatus;
-    
+
     switch (currentStatus) {
       case 'ASSIGNED':
         nextStatus = 'ON_THE_WAY';
@@ -658,7 +860,9 @@ class _DriverHomeViewState extends State<_DriverHomeView> {
     }
 
     if (nextStatus != null) {
-      context.read<DriverHomeBloc>().add(UpdateStatusEvent(newStatus: nextStatus));
+      context.read<DriverHomeBloc>().add(
+        UpdateStatusEvent(newStatus: nextStatus),
+      );
     }
   }
 
@@ -740,7 +944,10 @@ class _DriverHomeViewState extends State<_DriverHomeView> {
               context.read<DriverHomeBloc>().add(EndShiftEvent());
             },
             style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
-            child: const Text('Finalizar', style: TextStyle(color: Colors.white)),
+            child: const Text(
+              'Finalizar',
+              style: TextStyle(color: Colors.white),
+            ),
           ),
         ],
       ),
@@ -797,11 +1004,13 @@ class _DriverHomeViewState extends State<_DriverHomeView> {
               _showEndShiftDialog(context);
             },
             style: ElevatedButton.styleFrom(backgroundColor: Colors.orange),
-            child: const Text('Finalizar Turno', style: TextStyle(color: Colors.white)),
+            child: const Text(
+              'Finalizar Turno',
+              style: TextStyle(color: Colors.white),
+            ),
           ),
         ],
       ),
     );
   }
 }
-
