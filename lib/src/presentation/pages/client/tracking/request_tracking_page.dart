@@ -30,21 +30,25 @@ class RequestTrackingPage extends StatefulWidget {
 class _RequestTrackingPageState extends State<RequestTrackingPage> {
   final SocketService _socketService = SocketService();
   GoogleMapController? _mapController;
-  
+
   String _currentStatus = 'SEARCHING';
   String _statusMessage = 'Buscando ambulancia disponible...';
   LatLng? _ambulancePosition;
   bool _isConnected = false;
   bool _isCanceling = false;
-  
+
   // ETA y distancia
   String? _eta;
   String? _distance;
   bool _isLoadingRoute = false;
-  
+
+  // Datos del conductor y ambulancia para calificación
+  String? _driverName;
+  String? _ambulancePlate;
+
   Set<Marker> _markers = {};
   Set<Polyline> _polylines = {};
-  
+
   StreamSubscription? _connectionSub;
   StreamSubscription? _authSub;
   StreamSubscription? _assignedSub;
@@ -73,7 +77,7 @@ class _RequestTrackingPageState extends State<RequestTrackingPage> {
     try {
       final authRepo = sl<AuthRepository>();
       final session = await authRepo.getUserSession();
-      
+
       if (session == null) {
         _showError('No hay sesión activa');
         return;
@@ -93,6 +97,21 @@ class _RequestTrackingPageState extends State<RequestTrackingPage> {
       });
 
       _assignedSub = _socketService.requestAssignedStream.listen((update) {
+        // Extraer datos del conductor y ambulancia
+        final requestDetails = update.requestDetails;
+        final shift = requestDetails['shift'] as Map<String, dynamic>?;
+        if (shift != null) {
+          final driver = shift['driver'] as Map<String, dynamic>?;
+          final ambulance = shift['ambulance'] as Map<String, dynamic>?;
+          if (driver != null) {
+            _driverName = '${driver['name'] ?? ''} ${driver['lastname'] ?? ''}'
+                .trim();
+          }
+          if (ambulance != null) {
+            _ambulancePlate = ambulance['plate'];
+          }
+        }
+
         setState(() {
           _currentStatus = 'ASSIGNED';
           _statusMessage = update.message;
@@ -101,7 +120,9 @@ class _RequestTrackingPageState extends State<RequestTrackingPage> {
       });
 
       _locationSub = _socketService.ambulanceLocationStream.listen((location) {
-        print('📍 Cliente recibió ubicación: lat=${location.lat}, lon=${location.lon}');
+        print(
+          '📍 Cliente recibió ubicación: lat=${location.lat}, lon=${location.lon}',
+        );
         _updateAmbulancePosition(location.lat, location.lon);
       });
 
@@ -111,7 +132,6 @@ class _RequestTrackingPageState extends State<RequestTrackingPage> {
 
       // Conectar
       _socketService.connect(session.accessToken);
-      
     } catch (e) {
       _showError('Error al conectar: $e');
     }
@@ -119,10 +139,10 @@ class _RequestTrackingPageState extends State<RequestTrackingPage> {
 
   void _updateAmbulancePosition(double lat, double lng) async {
     final newPosition = LatLng(lat, lng);
-    
+
     setState(() {
       _ambulancePosition = newPosition;
-      
+
       // Actualizar marcador de ambulancia
       _markers = {
         ..._markers.where((m) => m.markerId.value != 'ambulance_location'),
@@ -140,16 +160,16 @@ class _RequestTrackingPageState extends State<RequestTrackingPage> {
 
     // Obtener ruta real con Google Directions API
     await _getDirections(newPosition);
-    
+
     // Ajustar cámara para mostrar ambos puntos
     _fitBounds();
   }
 
   Future<void> _getDirections(LatLng ambulancePos) async {
     if (_isLoadingRoute) return;
-    
+
     _isLoadingRoute = true;
-    
+
     try {
       final userPos = LatLng(widget.userLat, widget.userLng);
       final result = await DirectionsService.getDirections(
@@ -161,7 +181,7 @@ class _RequestTrackingPageState extends State<RequestTrackingPage> {
         setState(() {
           _eta = result.duration;
           _distance = result.distance;
-          
+
           // Dibujar la ruta real
           _polylines = {
             Polyline(
@@ -172,7 +192,7 @@ class _RequestTrackingPageState extends State<RequestTrackingPage> {
             ),
           };
         });
-        
+
         print('📍 Ruta obtenida: $_distance, ETA: $_eta');
       }
     } catch (e) {
@@ -200,12 +220,20 @@ class _RequestTrackingPageState extends State<RequestTrackingPage> {
 
     final bounds = LatLngBounds(
       southwest: LatLng(
-        _ambulancePosition!.latitude < widget.userLat ? _ambulancePosition!.latitude : widget.userLat,
-        _ambulancePosition!.longitude < widget.userLng ? _ambulancePosition!.longitude : widget.userLng,
+        _ambulancePosition!.latitude < widget.userLat
+            ? _ambulancePosition!.latitude
+            : widget.userLat,
+        _ambulancePosition!.longitude < widget.userLng
+            ? _ambulancePosition!.longitude
+            : widget.userLng,
       ),
       northeast: LatLng(
-        _ambulancePosition!.latitude > widget.userLat ? _ambulancePosition!.latitude : widget.userLat,
-        _ambulancePosition!.longitude > widget.userLng ? _ambulancePosition!.longitude : widget.userLng,
+        _ambulancePosition!.latitude > widget.userLat
+            ? _ambulancePosition!.latitude
+            : widget.userLat,
+        _ambulancePosition!.longitude > widget.userLng
+            ? _ambulancePosition!.longitude
+            : widget.userLng,
       ),
     );
 
@@ -229,7 +257,7 @@ class _RequestTrackingPageState extends State<RequestTrackingPage> {
     showDialog(
       context: context,
       barrierDismissible: false,
-      builder: (context) => AlertDialog(
+      builder: (dialogContext) => AlertDialog(
         title: const Row(
           children: [
             Icon(Icons.check_circle, color: Colors.green, size: 30),
@@ -237,14 +265,41 @@ class _RequestTrackingPageState extends State<RequestTrackingPage> {
             Text('Servicio Completado'),
           ],
         ),
-        content: const Text('El servicio de ambulancia ha sido completado exitosamente.'),
+        content: const Text(
+          'El servicio de ambulancia ha sido completado exitosamente.\n\n¿Te gustaría calificar el servicio?',
+        ),
         actions: [
+          TextButton(
+            onPressed: () {
+              Navigator.pop(dialogContext);
+              Navigator.pushNamedAndRemoveUntil(
+                context,
+                'client/home',
+                (route) => false,
+              );
+            },
+            child: const Text('Omitir'),
+          ),
           ElevatedButton(
             onPressed: () {
-              Navigator.pop(context);
-              Navigator.pop(context); // Volver a home
+              Navigator.pop(dialogContext);
+              Navigator.pushReplacementNamed(
+                context,
+                'client/rating',
+                arguments: {
+                  'serviceRequestId': widget.requestId,
+                  'driverName': _driverName,
+                  'ambulancePlate': _ambulancePlate,
+                },
+              );
             },
-            child: const Text('Aceptar'),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFF652580),
+            ),
+            child: const Text(
+              'Calificar',
+              style: TextStyle(color: Colors.white),
+            ),
           ),
         ],
       ),
@@ -295,7 +350,10 @@ class _RequestTrackingPageState extends State<RequestTrackingPage> {
           ElevatedButton(
             onPressed: () => Navigator.pop(context, true),
             style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
-            child: const Text('Sí, cancelar', style: TextStyle(color: Colors.white)),
+            child: const Text(
+              'Sí, cancelar',
+              style: TextStyle(color: Colors.white),
+            ),
           ),
         ],
       ),
@@ -308,7 +366,7 @@ class _RequestTrackingPageState extends State<RequestTrackingPage> {
     try {
       final repository = sl<ServiceRequestRepository>();
       await repository.cancelServiceRequest(requestId: widget.requestId!);
-      
+
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
@@ -320,7 +378,9 @@ class _RequestTrackingPageState extends State<RequestTrackingPage> {
       }
     } catch (e) {
       if (mounted) {
-        _showError('Error al cancelar: ${e.toString().replaceAll('Exception: ', '')}');
+        _showError(
+          'Error al cancelar: ${e.toString().replaceAll('Exception: ', '')}',
+        );
       }
     } finally {
       if (mounted) {
@@ -381,7 +441,7 @@ class _RequestTrackingPageState extends State<RequestTrackingPage> {
         children: [
           // Panel de estado
           _buildStatusPanel(),
-          
+
           // Mapa
           Expanded(
             child: GoogleMap(
@@ -408,10 +468,7 @@ class _RequestTrackingPageState extends State<RequestTrackingPage> {
       decoration: BoxDecoration(
         color: Colors.white,
         boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.1),
-            blurRadius: 10,
-          ),
+          BoxShadow(color: Colors.black.withOpacity(0.1), blurRadius: 10),
         ],
       ),
       child: Column(
@@ -435,33 +492,38 @@ class _RequestTrackingPageState extends State<RequestTrackingPage> {
                     const SizedBox(height: 4),
                     Text(
                       _statusMessage,
-                      style: TextStyle(
-                        fontSize: 14,
-                        color: Colors.grey[600],
-                      ),
+                      style: TextStyle(fontSize: 14, color: Colors.grey[600]),
                     ),
                   ],
                 ),
               ),
             ],
           ),
-          
+
           // ETA y distancia (solo si hay ambulancia en camino)
-          if (_eta != null && _distance != null && _currentStatus == 'ON_THE_WAY') ...[
+          if (_eta != null &&
+              _distance != null &&
+              _currentStatus == 'ON_THE_WAY') ...[
             const SizedBox(height: 12),
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
               decoration: BoxDecoration(
                 color: const Color(0xFF652580).withOpacity(0.1),
                 borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: const Color(0xFF652580).withOpacity(0.3)),
+                border: Border.all(
+                  color: const Color(0xFF652580).withOpacity(0.3),
+                ),
               ),
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.spaceAround,
                 children: [
                   Column(
                     children: [
-                      const Icon(Icons.access_time, color: Color(0xFF652580), size: 24),
+                      const Icon(
+                        Icons.access_time,
+                        color: Color(0xFF652580),
+                        size: 24,
+                      ),
                       const SizedBox(height: 4),
                       Text(
                         _eta!,
@@ -477,14 +539,14 @@ class _RequestTrackingPageState extends State<RequestTrackingPage> {
                       ),
                     ],
                   ),
-                  Container(
-                    height: 40,
-                    width: 1,
-                    color: Colors.grey[300],
-                  ),
+                  Container(height: 40, width: 1, color: Colors.grey[300]),
                   Column(
                     children: [
-                      const Icon(Icons.route, color: Color(0xFF652580), size: 24),
+                      const Icon(
+                        Icons.route,
+                        color: Color(0xFF652580),
+                        size: 24,
+                      ),
                       const SizedBox(height: 4),
                       Text(
                         _distance!,
@@ -504,9 +566,9 @@ class _RequestTrackingPageState extends State<RequestTrackingPage> {
               ),
             ),
           ],
-          
+
           const SizedBox(height: 16),
-          
+
           // Barra de progreso
           _buildProgressBar(),
 
@@ -526,10 +588,14 @@ class _RequestTrackingPageState extends State<RequestTrackingPage> {
                     : const Icon(Icons.cancel, color: Colors.red),
                 label: Text(
                   _isCanceling ? 'Cancelando...' : 'Cancelar solicitud',
-                  style: TextStyle(color: _isCanceling ? Colors.grey : Colors.red),
+                  style: TextStyle(
+                    color: _isCanceling ? Colors.grey : Colors.red,
+                  ),
                 ),
                 style: OutlinedButton.styleFrom(
-                  side: BorderSide(color: _isCanceling ? Colors.grey : Colors.red),
+                  side: BorderSide(
+                    color: _isCanceling ? Colors.grey : Colors.red,
+                  ),
                   padding: const EdgeInsets.symmetric(vertical: 12),
                 ),
               ),
@@ -615,7 +681,14 @@ class _RequestTrackingPageState extends State<RequestTrackingPage> {
   }
 
   Widget _buildProgressBar() {
-    final steps = ['SEARCHING', 'ASSIGNED', 'ON_THE_WAY', 'ON_SITE', 'TRAVELLING', 'COMPLETED'];
+    final steps = [
+      'SEARCHING',
+      'ASSIGNED',
+      'ON_THE_WAY',
+      'ON_SITE',
+      'TRAVELLING',
+      'COMPLETED',
+    ];
     final currentIndex = steps.indexOf(_currentStatus);
 
     return Row(
@@ -631,7 +704,9 @@ class _RequestTrackingPageState extends State<RequestTrackingPage> {
                 height: 12,
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
-                  color: isCompleted ? const Color(0xFF652580) : Colors.grey[300],
+                  color: isCompleted
+                      ? const Color(0xFF652580)
+                      : Colors.grey[300],
                 ),
               ),
               if (!isLast)
@@ -650,4 +725,3 @@ class _RequestTrackingPageState extends State<RequestTrackingPage> {
     );
   }
 }
-

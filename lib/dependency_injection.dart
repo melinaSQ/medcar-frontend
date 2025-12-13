@@ -3,6 +3,7 @@ import 'package:http/http.dart' as http;
 import 'package:medcar_frontend/src/data/datasources/remote/ambulances_remote_datasource.dart';
 import 'package:medcar_frontend/src/data/datasources/remote/auth_remote_datasource.dart';
 import 'package:medcar_frontend/src/data/datasources/remote/company_admin_remote_datasource.dart';
+import 'package:medcar_frontend/src/data/datasources/remote/ratings_remote_datasource.dart';
 import 'package:medcar_frontend/src/data/datasources/remote/driver_remote_datasource.dart';
 import 'package:medcar_frontend/src/data/datasources/remote/service_request_remote_datasource.dart';
 import 'package:medcar_frontend/src/data/datasources/remote/shifts_remote_datasource.dart';
@@ -41,6 +42,9 @@ Future<void> init() async {
   );
   sl.registerLazySingleton<CompanyAdminRemoteDataSource>(
     () => CompanyAdminRemoteDataSourceImpl(client: sl()),
+  );
+  sl.registerLazySingleton<RatingsRemoteDataSource>(
+    () => RatingsRemoteDataSourceImpl(client: sl()),
   );
 
   // === REPOSITORIES (dependen de Data Sources) ===

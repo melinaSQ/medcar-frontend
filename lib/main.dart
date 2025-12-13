@@ -9,6 +9,7 @@ import 'package:medcar_frontend/src/presentation/pages/auth/register/register_pa
 import 'package:medcar_frontend/src/presentation/pages/client/home/client_home_page.dart';
 import 'package:medcar_frontend/src/presentation/pages/client/map/client_map_page.dart';
 import 'package:medcar_frontend/src/presentation/pages/client/tracking/request_tracking_page.dart';
+import 'package:medcar_frontend/src/presentation/pages/client/rating/rating_page.dart';
 import 'package:medcar_frontend/src/presentation/pages/company/home/company_home_page.dart';
 import 'package:medcar_frontend/src/presentation/pages/driver/home/driver_home_page.dart';
 import 'package:medcar_frontend/src/presentation/pages/roles/role_selection_page.dart';
@@ -50,6 +51,17 @@ class MyApp extends StatelessWidget {
                 userLat: args['userLat'],
                 userLng: args['userLng'],
                 requestId: args['requestId'],
+              ),
+            );
+          }
+          // Ruta con parámetros para calificación
+          if (settings.name == 'client/rating') {
+            final args = settings.arguments as Map<String, dynamic>;
+            return MaterialPageRoute(
+              builder: (context) => RatingPage(
+                serviceRequestId: args['serviceRequestId'],
+                driverName: args['driverName'],
+                ambulancePlate: args['ambulancePlate'],
               ),
             );
           }

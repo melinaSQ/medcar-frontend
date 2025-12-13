@@ -1,3 +1,5 @@
+// ignore_for_file: annotate_overrides
+
 import '../../domain/entities/user_entity.dart';
 
 // UserModel extiende UserEntity para heredar sus propiedades

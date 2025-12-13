@@ -1,6 +1,6 @@
 // lib/src/presentation/pages/company/home/company_home_page.dart
 
-// ignore_for_file: avoid_print
+// ignore_for_file: avoid_print, deprecated_member_use, use_build_context_synchronously
 
 import 'dart:async';
 import 'package:flutter/material.dart';

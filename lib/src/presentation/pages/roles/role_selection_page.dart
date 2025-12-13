@@ -1,4 +1,5 @@
 // lib/src/presentation/pages/roles/role_selection_page.dart
+// ignore_for_file: deprecated_member_use, use_build_context_synchronously
 
 import 'package:flutter/material.dart';
 import 'package:medcar_frontend/dependency_injection.dart';
