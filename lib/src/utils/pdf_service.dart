@@ -5,7 +5,6 @@
 import 'dart:io';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
-import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:cross_file/cross_file.dart';
 import 'package:medcar_frontend/src/utils/date_utils.dart';
@@ -101,8 +100,10 @@ class PdfService {
                       service['emergencyType'] ?? 'N/A',
                     );
                     final status = _getStatusText(service['status'] ?? 'N/A');
+                    // La ambulancia está en shift.ambulance
+                    final shift = service['shift'] as Map<String, dynamic>?;
                     final ambulance =
-                        service['ambulance'] as Map<String, dynamic>?;
+                        shift?['ambulance'] as Map<String, dynamic>?;
                     final plate = ambulance?['plate'] ?? 'N/A';
 
                     return pw.TableRow(
@@ -137,7 +138,7 @@ class PdfService {
     // Guardar y compartir PDF
     await _saveAndSharePdf(
       pdf,
-      'historial_turnos_${DateTime.now().millisecondsSinceEpoch}.pdf',
+      'historial_servicios_${DateTime.now().millisecondsSinceEpoch}.pdf',
     );
   }
 
@@ -272,7 +273,6 @@ class PdfService {
       ),
     );
 
-    // Mostrar diálogo de impresión/guardado
     // Guardar y compartir PDF
     await _saveAndSharePdf(
       pdf,
@@ -409,26 +409,81 @@ class PdfService {
 
   /// Guarda el PDF y permite compartirlo
   static Future<void> _saveAndSharePdf(pw.Document pdf, String fileName) async {
+    // Generar bytes del PDF primero
+    final pdfBytes = await pdf.save();
+
+    // Intentar múltiples estrategias
+    Exception? lastError;
+
+    // Estrategia 1: Guardar en directorio de descargas y compartir
     try {
-      // Generar bytes del PDF
-      final pdfBytes = await pdf.save();
+      final downloadDir = Directory('/storage/emulated/0/Download');
 
-      // Obtener directorio temporal (más confiable para compartir)
-      final directory = await getTemporaryDirectory();
-      final filePath = '${directory.path}/$fileName';
+      // Crear el directorio si no existe
+      if (!await downloadDir.exists()) {
+        await downloadDir.create(recursive: true);
+      }
+
+      final filePath = '${downloadDir.path}/$fileName';
       final file = File(filePath);
-
-      // Guardar PDF en directorio temporal
       await file.writeAsBytes(pdfBytes);
 
-      // Compartir el archivo usando XFile
-      await Share.shareXFiles(
-        [XFile(filePath, mimeType: 'application/pdf')],
-        text: 'Reporte MedCar',
-        subject: 'Historial de servicios',
-      );
+      // Intentar compartir usando shareXFiles
+      try {
+        await Share.shareXFiles(
+          [XFile(filePath, mimeType: 'application/pdf')],
+          text: 'Reporte MedCar',
+          subject: 'Historial de servicios',
+        );
+        return; // Éxito
+      } catch (shareError) {
+        // Si shareXFiles falla, intentar con share (método alternativo)
+        try {
+          await Share.share(
+            'Reporte MedCar',
+            subject: 'Historial de servicios',
+          );
+          // El archivo ya está guardado en descargas, el usuario puede accederlo manualmente
+          return;
+        } catch (e) {
+          lastError = Exception('Error al compartir: ${shareError.toString()}');
+        }
+      }
     } catch (e) {
-      throw Exception('Error al compartir PDF: ${e.toString()}');
+      lastError = Exception('Error al guardar PDF: ${e.toString()}');
+    }
+
+    // Estrategia 2: Intentar con directorio temporal
+    try {
+      final tempDir = Directory.systemTemp;
+      final tempFile = File('${tempDir.path}/$fileName');
+      await tempFile.writeAsBytes(pdfBytes);
+
+      try {
+        await Share.shareXFiles(
+          [XFile(tempFile.path, mimeType: 'application/pdf')],
+          text: 'Reporte MedCar',
+          subject: 'Historial de servicios',
+        );
+        return; // Éxito
+      } catch (shareError) {
+        // Si falla, al menos el archivo está guardado
+        throw Exception(
+          'PDF guardado en: ${tempFile.path}\n'
+          'Error al compartir: ${shareError.toString()}\n'
+          'Por favor, reinicia la app completamente (no solo hot reload)',
+        );
+      }
+    } catch (e) {
+      final errorMessage = lastError != null
+          ? lastError.toString()
+          : e.toString();
+      throw Exception(
+        'Error al generar PDF.\n'
+        'Por favor, detén la app completamente y vuelve a ejecutarla (Stop y Run, no solo hot reload).\n'
+        'Si el problema persiste, el PDF puede estar guardado en la carpeta de Descargas.\n'
+        'Error: $errorMessage',
+      );
     }
   }
 
