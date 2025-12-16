@@ -18,4 +18,10 @@ abstract class AuthRepository {
     required String phone,
     String? imageUrl,
   });
+
+  // Cambiar contraseña
+  Future<void> changePassword({
+    required String currentPassword,
+    required String newPassword,
+  });
 }

@@ -607,6 +607,7 @@ class _CompanyHomeViewState extends State<_CompanyHomeView> {
               : IndexedStack(
                   index: _currentTabIndex,
                   children: [
+                    _buildDashboardTab(context, state),
                     _buildEmergenciesTab(context, state),
                     _buildAmbulancesTab(context),
                     _buildDriversTab(context),
@@ -621,12 +622,23 @@ class _CompanyHomeViewState extends State<_CompanyHomeView> {
             unselectedItemColor: Colors.grey,
             onTap: (index) {
               setState(() => _currentTabIndex = index);
+              if (index == 0) {
+                // Dashboard - cargar datos si es necesario
+                if (_ambulances.isEmpty) _loadAmbulances();
+                if (_drivers.isEmpty) _loadDrivers();
+                if (_history.isEmpty) _loadHistory();
+              }
               if (index == 1 && _ambulances.isEmpty) _loadAmbulances();
               if (index == 2 && _drivers.isEmpty) _loadDrivers();
               if (index == 3 && _ambulances.isEmpty) _loadAmbulances();
               if (index == 4 && _history.isEmpty) _loadHistory();
+              if (index == 5 && _history.isEmpty) _loadHistory();
             },
             items: const [
+              BottomNavigationBarItem(
+                icon: Icon(Icons.dashboard),
+                label: 'Dashboard',
+              ),
               BottomNavigationBarItem(
                 icon: Icon(Icons.emergency),
                 label: 'Emergencias',

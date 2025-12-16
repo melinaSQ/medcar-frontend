@@ -19,6 +19,11 @@ abstract class AuthRemoteDataSource {
     String? imageUrl,
     required String token,
   });
+  Future<void> changePassword({
+    required String currentPassword,
+    required String newPassword,
+    required String token,
+  });
 }
 
 class AuthRemoteDataSourceImpl implements AuthRemoteDataSource {
@@ -87,6 +92,30 @@ class AuthRemoteDataSourceImpl implements AuthRemoteDataSource {
     } else {
       final errorBody = json.decode(response.body);
       throw Exception(errorBody['message'] ?? 'Error al actualizar perfil');
+    }
+  }
+
+  @override
+  Future<void> changePassword({
+    required String currentPassword,
+    required String newPassword,
+    required String token,
+  }) async {
+    final response = await client.patch(
+      Uri.parse('$apiUrl/users/change-password'),
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer $token',
+      },
+      body: json.encode({
+        'currentPassword': currentPassword,
+        'newPassword': newPassword,
+      }),
+    );
+
+    if (response.statusCode != 200) {
+      final errorBody = json.decode(response.body);
+      throw Exception(errorBody['message'] ?? 'Error al cambiar contraseña');
     }
   }
 }

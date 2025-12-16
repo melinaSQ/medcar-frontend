@@ -98,4 +98,27 @@ class AuthRepositoryImpl implements AuthRepository {
       rethrow;
     }
   }
+
+  @override
+  Future<void> changePassword({
+    required String currentPassword,
+    required String newPassword,
+  }) async {
+    try {
+      // Obtener el token de la sesión actual
+      final currentSession = await getUserSession();
+      if (currentSession == null) {
+        throw Exception('No hay sesión activa');
+      }
+
+      // Cambiar la contraseña
+      await remoteDataSource.changePassword(
+        currentPassword: currentPassword,
+        newPassword: newPassword,
+        token: currentSession.accessToken,
+      );
+    } catch (e) {
+      rethrow;
+    }
+  }
 }
