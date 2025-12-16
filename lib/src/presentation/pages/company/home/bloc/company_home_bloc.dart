@@ -24,14 +24,17 @@ class CompanyHomeBloc extends Bloc<CompanyHomeEvent, CompanyHomeState> {
     on<LogoutEvent>(_onLogout);
   }
 
-  Future<void> _onInit(CompanyHomeInitEvent event, Emitter<CompanyHomeState> emit) async {
+  Future<void> _onInit(
+    CompanyHomeInitEvent event,
+    Emitter<CompanyHomeState> emit,
+  ) async {
     emit(state.copyWith(status: CompanyHomeStatus.loading));
 
     try {
       final session = await authRepository.getUserSession();
       if (session != null) {
         final userName = '${session.user.name} ${session.user.lastname}';
-        
+
         // Cargar solicitudes pendientes y turnos activos
         final requests = await serviceRequestDataSource.getPendingRequests(
           token: session.accessToken,
@@ -40,22 +43,29 @@ class CompanyHomeBloc extends Bloc<CompanyHomeEvent, CompanyHomeState> {
           token: session.accessToken,
         );
 
-        emit(state.copyWith(
-          status: CompanyHomeStatus.loaded,
-          userName: userName,
-          pendingRequests: requests,
-          activeShifts: shifts,
-        ));
+        emit(
+          state.copyWith(
+            status: CompanyHomeStatus.loaded,
+            userName: userName,
+            pendingRequests: requests,
+            activeShifts: shifts,
+          ),
+        );
       }
     } catch (e) {
-      emit(state.copyWith(
-        status: CompanyHomeStatus.error,
-        errorMessage: e.toString().replaceAll('Exception: ', ''),
-      ));
+      emit(
+        state.copyWith(
+          status: CompanyHomeStatus.error,
+          errorMessage: e.toString().replaceAll('Exception: ', ''),
+        ),
+      );
     }
   }
 
-  Future<void> _onLoadPendingRequests(LoadPendingRequestsEvent event, Emitter<CompanyHomeState> emit) async {
+  Future<void> _onLoadPendingRequests(
+    LoadPendingRequestsEvent event,
+    Emitter<CompanyHomeState> emit,
+  ) async {
     try {
       final session = await authRepository.getUserSession();
       if (session != null) {
@@ -65,13 +75,18 @@ class CompanyHomeBloc extends Bloc<CompanyHomeEvent, CompanyHomeState> {
         emit(state.copyWith(pendingRequests: requests));
       }
     } catch (e) {
-      emit(state.copyWith(
-        errorMessage: e.toString().replaceAll('Exception: ', ''),
-      ));
+      emit(
+        state.copyWith(
+          errorMessage: e.toString().replaceAll('Exception: ', ''),
+        ),
+      );
     }
   }
 
-  Future<void> _onLoadActiveShifts(LoadActiveShiftsEvent event, Emitter<CompanyHomeState> emit) async {
+  Future<void> _onLoadActiveShifts(
+    LoadActiveShiftsEvent event,
+    Emitter<CompanyHomeState> emit,
+  ) async {
     try {
       final session = await authRepository.getUserSession();
       if (session != null) {
@@ -81,13 +96,18 @@ class CompanyHomeBloc extends Bloc<CompanyHomeEvent, CompanyHomeState> {
         emit(state.copyWith(activeShifts: shifts));
       }
     } catch (e) {
-      emit(state.copyWith(
-        errorMessage: e.toString().replaceAll('Exception: ', ''),
-      ));
+      emit(
+        state.copyWith(
+          errorMessage: e.toString().replaceAll('Exception: ', ''),
+        ),
+      );
     }
   }
 
-  Future<void> _onAssignRequest(AssignRequestEvent event, Emitter<CompanyHomeState> emit) async {
+  Future<void> _onAssignRequest(
+    AssignRequestEvent event,
+    Emitter<CompanyHomeState> emit,
+  ) async {
     emit(state.copyWith(status: CompanyHomeStatus.assigning));
 
     try {
@@ -99,26 +119,47 @@ class CompanyHomeBloc extends Bloc<CompanyHomeEvent, CompanyHomeState> {
           token: session.accessToken,
         );
 
-        // Recargar solicitudes pendientes
-        final requests = await serviceRequestDataSource.getPendingRequests(
-          token: session.accessToken,
+        // Recargar solicitudes pendientes y turnos activos
+        final [requests, shifts] = await Future.wait([
+          serviceRequestDataSource.getPendingRequests(
+            token: session.accessToken,
+          ),
+          shiftsDataSource.getActiveShifts(token: session.accessToken),
+        ]);
+
+        // Emitir estado assigned para mostrar el mensaje
+        emit(
+          state.copyWith(
+            status: CompanyHomeStatus.assigned,
+            pendingRequests: requests,
+            activeShifts: shifts,
+          ),
         );
 
-        emit(state.copyWith(
-          status: CompanyHomeStatus.assigned,
-          pendingRequests: requests,
-        ));
+        // Inmediatamente después, resetear a loaded para evitar que se muestre el mensaje repetidamente
+        await Future.delayed(const Duration(milliseconds: 50));
+        emit(
+          state.copyWith(
+            status: CompanyHomeStatus.loaded,
+            pendingRequests: requests,
+            activeShifts: shifts,
+          ),
+        );
       }
     } catch (e) {
-      emit(state.copyWith(
-        status: CompanyHomeStatus.error,
-        errorMessage: e.toString().replaceAll('Exception: ', ''),
-      ));
+      emit(
+        state.copyWith(
+          status: CompanyHomeStatus.error,
+          errorMessage: e.toString().replaceAll('Exception: ', ''),
+        ),
+      );
     }
   }
 
-  Future<void> _onLogout(LogoutEvent event, Emitter<CompanyHomeState> emit) async {
+  Future<void> _onLogout(
+    LogoutEvent event,
+    Emitter<CompanyHomeState> emit,
+  ) async {
     await authRepository.logout();
   }
 }
-

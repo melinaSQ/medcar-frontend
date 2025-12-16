@@ -464,18 +464,25 @@ class _CompanyHomeViewState extends State<_CompanyHomeView> {
     }
   }
 
+  CompanyHomeStatus? _previousStatus;
+
   @override
   Widget build(BuildContext context) {
     return BlocConsumer<CompanyHomeBloc, CompanyHomeState>(
       listener: (context, state) {
-        if (state.status == CompanyHomeStatus.assigned) {
+        // Solo mostrar el mensaje cuando el estado cambia de otro estado a 'assigned'
+        if (state.status == CompanyHomeStatus.assigned &&
+            _previousStatus != CompanyHomeStatus.assigned) {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
               content: Text('✅ Ambulancia asignada correctamente'),
               backgroundColor: Colors.green,
+              duration: Duration(seconds: 3),
             ),
           );
         }
+        _previousStatus = state.status;
+
         if (state.errorMessage != null) {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
