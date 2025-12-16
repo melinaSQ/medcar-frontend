@@ -55,6 +55,12 @@ dependencies:
   
   # Para formatear fechas
   intl: ^0.19.0
+  
+  # Para generar PDFs
+  pdf: ^3.10.7
+  path_provider: ^2.1.2
+  share_plus: ^10.1.2
+  cross_file: ^0.3.4
 
 dev_dependencies:
   flutter_test:

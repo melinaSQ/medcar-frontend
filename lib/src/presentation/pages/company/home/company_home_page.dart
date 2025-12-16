@@ -14,6 +14,7 @@ import 'package:medcar_frontend/src/data/datasources/remote/shifts_remote_dataso
 import 'package:medcar_frontend/src/data/services/socket_service.dart';
 import 'package:medcar_frontend/src/domain/repositories/auth_repository.dart';
 import 'package:medcar_frontend/src/utils/date_utils.dart';
+import 'package:medcar_frontend/src/utils/pdf_service.dart';
 import 'bloc/company_home_bloc.dart';
 import 'bloc/company_home_event.dart';
 import 'bloc/company_home_state.dart';
@@ -280,6 +281,38 @@ class _CompanyHomeViewState extends State<_CompanyHomeView> {
     } catch (e) {
       print('Error cargando historial: $e');
       setState(() => _isLoadingHistory = false);
+    }
+  }
+
+  Future<void> _downloadHistoryPdf() async {
+    try {
+      final authRepo = sl<AuthRepository>();
+      final session = await authRepo.getUserSession();
+      if (session != null) {
+        final userName = '${session.user.name} ${session.user.lastname}';
+        await PdfService.generateServiceHistoryPdf(
+          services: _history,
+          title: 'Historial de Servicios - Empresa',
+          userName: userName,
+        );
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('✅ PDF generado correctamente'),
+              backgroundColor: Colors.green,
+            ),
+          );
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error al generar PDF: ${e.toString()}'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
     }
   }
 
@@ -1804,10 +1837,21 @@ class _CompanyHomeViewState extends State<_CompanyHomeView> {
                 '📋 Historial de Servicios',
                 style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
               ),
-              IconButton(
-                icon: const Icon(Icons.refresh),
-                onPressed: _loadHistory,
-                tooltip: 'Actualizar',
+              Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  if (_history.isNotEmpty)
+                    IconButton(
+                      icon: const Icon(Icons.picture_as_pdf),
+                      onPressed: _downloadHistoryPdf,
+                      tooltip: 'Descargar PDF',
+                    ),
+                  IconButton(
+                    icon: const Icon(Icons.refresh),
+                    onPressed: _loadHistory,
+                    tooltip: 'Actualizar',
+                  ),
+                ],
               ),
             ],
           ),

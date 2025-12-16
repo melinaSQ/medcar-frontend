@@ -8,6 +8,7 @@ import 'package:medcar_frontend/src/data/datasources/remote/service_request_remo
 import 'package:medcar_frontend/src/domain/repositories/auth_repository.dart';
 import 'package:intl/intl.dart';
 import 'package:medcar_frontend/src/utils/date_utils.dart';
+import 'package:medcar_frontend/src/utils/pdf_service.dart';
 
 class ClientHistoryPage extends StatefulWidget {
   const ClientHistoryPage({super.key});
@@ -96,6 +97,38 @@ class _ClientHistoryPageState extends State<ClientHistoryPage> {
     }
   }
 
+  Future<void> _downloadPdf() async {
+    try {
+      final authRepo = di.sl<AuthRepository>();
+      final session = await authRepo.getUserSession();
+      if (session != null) {
+        final userName = '${session.user.name} ${session.user.lastname}';
+        await PdfService.generateServiceHistoryPdf(
+          services: _history,
+          title: 'Historial de Servicios',
+          userName: userName,
+        );
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('✅ PDF generado correctamente'),
+              backgroundColor: Colors.green,
+            ),
+          );
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error al generar PDF: ${e.toString()}'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -104,6 +137,12 @@ class _ClientHistoryPageState extends State<ClientHistoryPage> {
         backgroundColor: const Color(0xFF652580),
         iconTheme: const IconThemeData(color: Colors.white),
         actions: [
+          if (_history.isNotEmpty)
+            IconButton(
+              icon: const Icon(Icons.picture_as_pdf),
+              onPressed: _downloadPdf,
+              tooltip: 'Descargar PDF',
+            ),
           IconButton(
             icon: const Icon(Icons.refresh),
             onPressed: _loadHistory,

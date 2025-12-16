@@ -8,6 +8,7 @@ import 'package:medcar_frontend/src/data/datasources/remote/service_request_remo
 import 'package:medcar_frontend/src/domain/repositories/auth_repository.dart';
 import 'package:intl/intl.dart';
 import 'package:medcar_frontend/src/utils/date_utils.dart';
+import 'package:medcar_frontend/src/utils/pdf_service.dart';
 
 class DriverHistoryPage extends StatefulWidget {
   const DriverHistoryPage({super.key});
@@ -71,6 +72,38 @@ class _DriverHistoryPageState extends State<DriverHistoryPage> {
         return 'Otro';
       default:
         return type;
+    }
+  }
+
+  Future<void> _downloadPdf() async {
+    try {
+      final authRepo = di.sl<AuthRepository>();
+      final session = await authRepo.getUserSession();
+      if (session != null) {
+        final userName = '${session.user.name} ${session.user.lastname}';
+        await PdfService.generateServiceHistoryPdf(
+          services: _history,
+          title: 'Historial de Servicios - Conductor',
+          userName: userName,
+        );
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('✅ PDF generado correctamente'),
+              backgroundColor: Colors.green,
+            ),
+          );
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error al generar PDF: ${e.toString()}'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
     }
   }
 
