@@ -714,63 +714,135 @@ class _CompanyHomeViewState extends State<_CompanyHomeView> {
 
   Widget _buildAmbulanceCard(Map<String, dynamic> ambulance) {
     final status = ambulance['status'] ?? 'OPERATIONAL';
-    final isOperational = status == 'OPERATIONAL';
     final ambulanceId = ambulance['id'];
+
+    String _getStatusText(String status) {
+      switch (status) {
+        case 'OPERATIONAL':
+          return 'OPERATIVA';
+        case 'IN_MAINTENANCE':
+          return 'EN MANTENIMIENTO';
+        case 'OUT_OF_SERVICE':
+          return 'FUERA DE SERVICIO';
+        default:
+          return status;
+      }
+    }
+
+    Color _getStatusColor(String status) {
+      switch (status) {
+        case 'OPERATIONAL':
+          return Colors.green;
+        case 'IN_MAINTENANCE':
+          return Colors.orange;
+        case 'OUT_OF_SERVICE':
+          return Colors.red;
+        default:
+          return Colors.grey;
+      }
+    }
 
     return Card(
       margin: const EdgeInsets.only(bottom: 12),
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-      child: ListTile(
-        leading: CircleAvatar(
-          backgroundColor: isOperational ? Colors.green[100] : Colors.red[100],
-          child: Icon(
-            Icons.local_shipping,
-            color: isOperational ? Colors.green : Colors.red,
-          ),
-        ),
-        title: Text(
-          ambulance['plate'] ?? 'Sin placa',
-          style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
-        ),
-        subtitle: Column(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text('Tipo: ${ambulance['type'] ?? 'N/A'}'),
-            Text('SEDES: ${ambulance['sedesCode'] ?? 'N/A'}'),
-          ],
-        ),
-        trailing: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-              decoration: BoxDecoration(
-                color: isOperational ? Colors.green : Colors.red,
-                borderRadius: BorderRadius.circular(20),
-              ),
-              child: Text(
-                isOperational ? 'OPERATIVA' : 'INACTIVA',
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontSize: 12,
-                  fontWeight: FontWeight.bold,
+            Row(
+              children: [
+                CircleAvatar(
+                  backgroundColor: _getStatusColor(status).withOpacity(0.2),
+                  child: Icon(
+                    Icons.local_shipping,
+                    color: _getStatusColor(status),
+                  ),
                 ),
-              ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        ambulance['plate'] ?? 'Sin placa',
+                        style: const TextStyle(
+                          fontWeight: FontWeight.bold,
+                          fontSize: 18,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        'Tipo: ${ambulance['type'] ?? 'N/A'}',
+                        style: TextStyle(fontSize: 14, color: Colors.grey[600]),
+                      ),
+                      Text(
+                        'SEDES: ${ambulance['sedesCode'] ?? 'N/A'}',
+                        style: TextStyle(fontSize: 14, color: Colors.grey[600]),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
             ),
-            const SizedBox(width: 8),
-            IconButton(
-              icon: const Icon(Icons.edit, color: Colors.blue),
-              onPressed: () => _showEditAmbulanceDialog(context, ambulance),
-              tooltip: 'Editar',
-            ),
-            IconButton(
-              icon: const Icon(Icons.delete, color: Colors.red),
-              onPressed: () => _showDeleteAmbulanceDialog(context, ambulanceId),
-              tooltip: 'Eliminar',
+            const Divider(height: 24),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                InkWell(
+                  onTap: () =>
+                      _showChangeStatusDialog(context, ambulanceId, status),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 16,
+                      vertical: 8,
+                    ),
+                    decoration: BoxDecoration(
+                      color: _getStatusColor(status),
+                      borderRadius: BorderRadius.circular(20),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(
+                          _getStatusText(status),
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 12,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                        const SizedBox(width: 4),
+                        const Icon(
+                          Icons.arrow_drop_down,
+                          color: Colors.white,
+                          size: 18,
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+                Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    IconButton(
+                      icon: const Icon(Icons.edit, color: Colors.blue),
+                      onPressed: () =>
+                          _showEditAmbulanceDialog(context, ambulance),
+                      tooltip: 'Editar',
+                    ),
+                    IconButton(
+                      icon: const Icon(Icons.delete, color: Colors.red),
+                      onPressed: () =>
+                          _showDeleteAmbulanceDialog(context, ambulanceId),
+                      tooltip: 'Eliminar',
+                    ),
+                  ],
+                ),
+              ],
             ),
           ],
         ),
-        isThreeLine: true,
       ),
     );
   }
@@ -1091,6 +1163,108 @@ class _CompanyHomeViewState extends State<_CompanyHomeView> {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
             content: Text('✅ Ambulancia eliminada'),
+            backgroundColor: Colors.green,
+          ),
+        );
+        _loadAmbulances();
+      }
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Error: ${e.toString().replaceAll('Exception: ', '')}'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
+  }
+
+  void _showChangeStatusDialog(
+    BuildContext context,
+    int? ambulanceId,
+    String currentStatus,
+  ) {
+    if (ambulanceId == null) return;
+
+    String selectedStatus = currentStatus;
+
+    showDialog(
+      context: context,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          title: const Text('Cambiar Estado'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              RadioListTile<String>(
+                title: const Text('Operativa'),
+                subtitle: const Text('Lista para usar'),
+                value: 'OPERATIONAL',
+                groupValue: selectedStatus,
+                activeColor: Colors.green,
+                onChanged: (value) {
+                  setDialogState(() => selectedStatus = value!);
+                },
+              ),
+              RadioListTile<String>(
+                title: const Text('En Mantenimiento'),
+                subtitle: const Text('En el taller'),
+                value: 'IN_MAINTENANCE',
+                groupValue: selectedStatus,
+                activeColor: Colors.orange,
+                onChanged: (value) {
+                  setDialogState(() => selectedStatus = value!);
+                },
+              ),
+              RadioListTile<String>(
+                title: const Text('Fuera de Servicio'),
+                subtitle: const Text('Retirada temporal o permanentemente'),
+                value: 'OUT_OF_SERVICE',
+                groupValue: selectedStatus,
+                activeColor: Colors.red,
+                onChanged: (value) {
+                  setDialogState(() => selectedStatus = value!);
+                },
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext),
+              child: const Text('Cancelar'),
+            ),
+            ElevatedButton(
+              onPressed: () async {
+                Navigator.pop(dialogContext);
+                await _updateAmbulanceStatus(ambulanceId, selectedStatus);
+              },
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFF1E3A5F),
+              ),
+              child: const Text(
+                'Guardar',
+                style: TextStyle(color: Colors.white),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> _updateAmbulanceStatus(int ambulanceId, String status) async {
+    try {
+      final authRepo = sl<AuthRepository>();
+      final session = await authRepo.getUserSession();
+      if (session != null) {
+        final dataSource = sl<CompanyAdminRemoteDataSource>();
+        await dataSource.updateAmbulanceStatus(
+          ambulanceId: ambulanceId,
+          status: status,
+          token: session.accessToken,
+        );
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('✅ Estado actualizado'),
             backgroundColor: Colors.green,
           ),
         );

@@ -24,6 +24,11 @@ abstract class CompanyAdminRemoteDataSource {
     required int ambulanceId,
     required String token,
   });
+  Future<Map<String, dynamic>> updateAmbulanceStatus({
+    required int ambulanceId,
+    required String status,
+    required String token,
+  });
 
   // Códigos de turno
   Future<Map<String, dynamic>> generateShiftCode({
@@ -148,6 +153,29 @@ class CompanyAdminRemoteDataSourceImpl implements CompanyAdminRemoteDataSource {
     if (response.statusCode != 200 && response.statusCode != 204) {
       final errorBody = json.decode(response.body);
       throw Exception(errorBody['message'] ?? 'Error al eliminar ambulancia');
+    }
+  }
+
+  @override
+  Future<Map<String, dynamic>> updateAmbulanceStatus({
+    required int ambulanceId,
+    required String status,
+    required String token,
+  }) async {
+    final response = await client.patch(
+      Uri.parse('$apiUrl/ambulances/$ambulanceId/status'),
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer $token',
+      },
+      body: json.encode({'status': status}),
+    );
+
+    if (response.statusCode == 200) {
+      return json.decode(response.body);
+    } else {
+      final errorBody = json.decode(response.body);
+      throw Exception(errorBody['message'] ?? 'Error al actualizar estado');
     }
   }
 
