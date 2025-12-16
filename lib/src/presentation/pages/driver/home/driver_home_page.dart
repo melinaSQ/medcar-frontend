@@ -517,6 +517,13 @@ class _DriverHomeViewState extends State<_DriverHomeView> {
             backgroundColor: const Color(0xFF2E7D32),
             actions: [
               IconButton(
+                icon: const Icon(Icons.person, color: Colors.white),
+                tooltip: 'Mi Perfil',
+                onPressed: () {
+                  Navigator.pushNamed(context, 'profile');
+                },
+              ),
+              IconButton(
                 icon: const Icon(Icons.swap_horiz, color: Colors.white),
                 tooltip: 'Cambiar rol',
                 onPressed: () {

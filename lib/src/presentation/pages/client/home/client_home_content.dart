@@ -28,6 +28,13 @@ class ClientHomeContent extends StatelessWidget {
         iconTheme: const IconThemeData(color: Colors.white),
         actions: [
           IconButton(
+            icon: const Icon(Icons.person),
+            tooltip: 'Mi Perfil',
+            onPressed: () {
+              Navigator.pushNamed(context, 'profile');
+            },
+          ),
+          IconButton(
             icon: const Icon(Icons.swap_horiz),
             tooltip: 'Cambiar rol',
             onPressed: () {

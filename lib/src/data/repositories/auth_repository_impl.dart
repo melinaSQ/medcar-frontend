@@ -5,6 +5,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../../domain/entities/auth_response_entity.dart';
 import '../../domain/repositories/auth_repository.dart';
 import '../datasources/remote/auth_remote_datasource.dart';
+import '../models/user_model.dart';
 
 const String _sessionKey = 'user_session';
 
@@ -49,7 +50,7 @@ class AuthRepositoryImpl implements AuthRepository {
     final prefs = await SharedPreferences.getInstance();
     final sessionJson = prefs.getString(_sessionKey);
     if (sessionJson == null) return null;
-    
+
     final sessionMap = json.decode(sessionJson) as Map<String, dynamic>;
     return AuthResponseEntity.fromJson(sessionMap);
   }
@@ -58,5 +59,43 @@ class AuthRepositoryImpl implements AuthRepository {
   Future<void> logout() async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove(_sessionKey);
+  }
+
+  @override
+  Future<AuthResponseEntity> updateProfile({
+    required String name,
+    required String lastname,
+    required String phone,
+    String? imageUrl,
+  }) async {
+    try {
+      // Obtener el token de la sesión actual
+      final currentSession = await getUserSession();
+      if (currentSession == null) {
+        throw Exception('No hay sesión activa');
+      }
+
+      // Actualizar el perfil
+      final updatedUser = await remoteDataSource.updateProfile(
+        name: name,
+        lastname: lastname,
+        phone: phone,
+        imageUrl: imageUrl,
+        token: currentSession.accessToken,
+      );
+
+      // Crear nueva respuesta de autenticación con el usuario actualizado
+      final updatedAuthResponse = AuthResponseEntity(
+        user: UserModel.fromJson(updatedUser),
+        accessToken: currentSession.accessToken,
+      );
+
+      // Guardar la sesión actualizada
+      await saveUserSession(updatedAuthResponse);
+
+      return updatedAuthResponse;
+    } catch (e) {
+      rethrow;
+    }
   }
 }

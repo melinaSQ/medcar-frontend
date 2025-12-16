@@ -12,6 +12,13 @@ const String apiUrl = 'http://10.0.2.2:3000';
 abstract class AuthRemoteDataSource {
   Future<AuthResponseModel> login(String email, String password);
   Future<AuthResponseModel> register(Map<String, dynamic> userData);
+  Future<Map<String, dynamic>> updateProfile({
+    required String name,
+    required String lastname,
+    required String phone,
+    String? imageUrl,
+    required String token,
+  });
 }
 
 class AuthRemoteDataSourceImpl implements AuthRemoteDataSource {
@@ -46,6 +53,40 @@ class AuthRemoteDataSourceImpl implements AuthRemoteDataSource {
       return AuthResponseModel.fromJson(json.decode(response.body));
     } else {
       throw Exception('Failed to register: ${response.body}');
+    }
+  }
+
+  @override
+  Future<Map<String, dynamic>> updateProfile({
+    required String name,
+    required String lastname,
+    required String phone,
+    String? imageUrl,
+    required String token,
+  }) async {
+    final body = <String, dynamic>{
+      'name': name,
+      'lastname': lastname,
+      'phone': phone,
+    };
+    if (imageUrl != null && imageUrl.isNotEmpty) {
+      body['imageUrl'] = imageUrl;
+    }
+
+    final response = await client.patch(
+      Uri.parse('$apiUrl/users/me'),
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer $token',
+      },
+      body: json.encode(body),
+    );
+
+    if (response.statusCode == 200) {
+      return json.decode(response.body);
+    } else {
+      final errorBody = json.decode(response.body);
+      throw Exception(errorBody['message'] ?? 'Error al actualizar perfil');
     }
   }
 }

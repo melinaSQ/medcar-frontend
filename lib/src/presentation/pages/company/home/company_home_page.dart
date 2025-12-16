@@ -542,6 +542,13 @@ class _CompanyHomeViewState extends State<_CompanyHomeView> {
                 },
               ),
               IconButton(
+                icon: const Icon(Icons.person, color: Colors.white),
+                tooltip: 'Mi Perfil',
+                onPressed: () {
+                  Navigator.pushNamed(context, 'profile');
+                },
+              ),
+              IconButton(
                 icon: const Icon(Icons.swap_horiz, color: Colors.white),
                 tooltip: 'Cambiar rol',
                 onPressed: () {
