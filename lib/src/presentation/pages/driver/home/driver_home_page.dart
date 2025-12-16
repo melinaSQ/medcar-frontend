@@ -479,27 +479,38 @@ class _DriverHomeViewState extends State<_DriverHomeView> {
                   ),
                 ),
                 if (_driverRating != null && _driverRating! > 0)
-                  Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      ...List.generate(5, (index) {
-                        return Icon(
-                          index < _driverRating!.round()
-                              ? Icons.star
-                              : Icons.star_border,
-                          size: 14,
-                          color: Colors.amber,
-                        );
-                      }),
-                      const SizedBox(width: 4),
-                      Text(
-                        '${_driverRating!.toStringAsFixed(1)} (${_driverRatingCount})',
-                        style: const TextStyle(
-                          fontSize: 12,
+                  InkWell(
+                    onTap: () {
+                      Navigator.pushNamed(context, 'driver/ratings');
+                    },
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        ...List.generate(5, (index) {
+                          return Icon(
+                            index < _driverRating!.round()
+                                ? Icons.star
+                                : Icons.star_border,
+                            size: 14,
+                            color: Colors.amber,
+                          );
+                        }),
+                        const SizedBox(width: 4),
+                        Text(
+                          '${_driverRating!.toStringAsFixed(1)} (${_driverRatingCount})',
+                          style: const TextStyle(
+                            fontSize: 12,
+                            color: Colors.white70,
+                          ),
+                        ),
+                        const SizedBox(width: 4),
+                        const Icon(
+                          Icons.arrow_forward_ios,
+                          size: 10,
                           color: Colors.white70,
                         ),
-                      ),
-                    ],
+                      ],
+                    ),
                   ),
               ],
             ),
