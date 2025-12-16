@@ -13,6 +13,17 @@ abstract class CompanyAdminRemoteDataSource {
     required String type,
     required String token,
   });
+  Future<Map<String, dynamic>> updateAmbulance({
+    required int ambulanceId,
+    required String plate,
+    required String sedesCode,
+    required String type,
+    required String token,
+  });
+  Future<void> deleteAmbulance({
+    required int ambulanceId,
+    required String token,
+  });
 
   // Códigos de turno
   Future<Map<String, dynamic>> generateShiftCode({
@@ -89,6 +100,54 @@ class CompanyAdminRemoteDataSourceImpl implements CompanyAdminRemoteDataSource {
     } else {
       final errorBody = json.decode(response.body);
       throw Exception(errorBody['message'] ?? 'Error al crear ambulancia');
+    }
+  }
+
+  @override
+  Future<Map<String, dynamic>> updateAmbulance({
+    required int ambulanceId,
+    required String plate,
+    required String sedesCode,
+    required String type,
+    required String token,
+  }) async {
+    final response = await client.put(
+      Uri.parse('$apiUrl/ambulances/$ambulanceId'),
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer $token',
+      },
+      body: json.encode({
+        'plate': plate.toUpperCase(),
+        'sedesCode': sedesCode,
+        'type': type,
+      }),
+    );
+
+    if (response.statusCode == 200) {
+      return json.decode(response.body);
+    } else {
+      final errorBody = json.decode(response.body);
+      throw Exception(errorBody['message'] ?? 'Error al actualizar ambulancia');
+    }
+  }
+
+  @override
+  Future<void> deleteAmbulance({
+    required int ambulanceId,
+    required String token,
+  }) async {
+    final response = await client.delete(
+      Uri.parse('$apiUrl/ambulances/$ambulanceId'),
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer $token',
+      },
+    );
+
+    if (response.statusCode != 200 && response.statusCode != 204) {
+      final errorBody = json.decode(response.body);
+      throw Exception(errorBody['message'] ?? 'Error al eliminar ambulancia');
     }
   }
 

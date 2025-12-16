@@ -715,6 +715,7 @@ class _CompanyHomeViewState extends State<_CompanyHomeView> {
   Widget _buildAmbulanceCard(Map<String, dynamic> ambulance) {
     final status = ambulance['status'] ?? 'OPERATIONAL';
     final isOperational = status == 'OPERATIONAL';
+    final ambulanceId = ambulance['id'];
 
     return Card(
       margin: const EdgeInsets.only(bottom: 12),
@@ -738,20 +739,36 @@ class _CompanyHomeViewState extends State<_CompanyHomeView> {
             Text('SEDES: ${ambulance['sedesCode'] ?? 'N/A'}'),
           ],
         ),
-        trailing: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-          decoration: BoxDecoration(
-            color: isOperational ? Colors.green : Colors.red,
-            borderRadius: BorderRadius.circular(20),
-          ),
-          child: Text(
-            isOperational ? 'OPERATIVA' : 'INACTIVA',
-            style: const TextStyle(
-              color: Colors.white,
-              fontSize: 12,
-              fontWeight: FontWeight.bold,
+        trailing: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+              decoration: BoxDecoration(
+                color: isOperational ? Colors.green : Colors.red,
+                borderRadius: BorderRadius.circular(20),
+              ),
+              child: Text(
+                isOperational ? 'OPERATIVA' : 'INACTIVA',
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 12,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
             ),
-          ),
+            const SizedBox(width: 8),
+            IconButton(
+              icon: const Icon(Icons.edit, color: Colors.blue),
+              onPressed: () => _showEditAmbulanceDialog(context, ambulance),
+              tooltip: 'Editar',
+            ),
+            IconButton(
+              icon: const Icon(Icons.delete, color: Colors.red),
+              onPressed: () => _showDeleteAmbulanceDialog(context, ambulanceId),
+              tooltip: 'Eliminar',
+            ),
+          ],
         ),
         isThreeLine: true,
       ),
@@ -872,6 +889,208 @@ class _CompanyHomeViewState extends State<_CompanyHomeView> {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
             content: Text('✅ Ambulancia creada'),
+            backgroundColor: Colors.green,
+          ),
+        );
+        _loadAmbulances();
+      }
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Error: ${e.toString().replaceAll('Exception: ', '')}'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
+  }
+
+  void _showEditAmbulanceDialog(
+    BuildContext context,
+    Map<String, dynamic> ambulance,
+  ) {
+    final plateController = TextEditingController(
+      text: ambulance['plate'] ?? '',
+    );
+    final sedesController = TextEditingController(
+      text: ambulance['sedesCode'] ?? '',
+    );
+    String selectedType = ambulance['type'] ?? 'TYPE_I';
+    final ambulanceId = ambulance['id'];
+
+    showDialog(
+      context: context,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          title: const Text('Editar Ambulancia'),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                TextField(
+                  controller: plateController,
+                  decoration: const InputDecoration(
+                    labelText: 'Placa',
+                    hintText: 'Ej: 1234ABC',
+                    border: OutlineInputBorder(),
+                  ),
+                  textCapitalization: TextCapitalization.characters,
+                ),
+                const SizedBox(height: 16),
+                TextField(
+                  controller: sedesController,
+                  decoration: const InputDecoration(
+                    labelText: 'Código SEDES',
+                    hintText: 'Ej: SEDES-001',
+                    border: OutlineInputBorder(),
+                  ),
+                ),
+                const SizedBox(height: 16),
+                DropdownButtonFormField<String>(
+                  value: selectedType,
+                  decoration: const InputDecoration(
+                    labelText: 'Tipo de ambulancia',
+                    border: OutlineInputBorder(),
+                  ),
+                  items: const [
+                    DropdownMenuItem(
+                      value: 'TYPE_I',
+                      child: Text('Tipo I - Traslado'),
+                    ),
+                    DropdownMenuItem(
+                      value: 'TYPE_II',
+                      child: Text('Tipo II - Emergencias básicas'),
+                    ),
+                    DropdownMenuItem(
+                      value: 'TYPE_III',
+                      child: Text('Tipo III - UCI Móvil'),
+                    ),
+                  ],
+                  onChanged: (value) {
+                    setDialogState(() => selectedType = value!);
+                  },
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext),
+              child: const Text('Cancelar'),
+            ),
+            ElevatedButton(
+              onPressed: () async {
+                if (plateController.text.isEmpty ||
+                    sedesController.text.isEmpty) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text('Completa todos los campos'),
+                      backgroundColor: Colors.red,
+                    ),
+                  );
+                  return;
+                }
+                Navigator.pop(dialogContext);
+                await _updateAmbulance(
+                  ambulanceId,
+                  plateController.text,
+                  sedesController.text,
+                  selectedType,
+                );
+              },
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFF1E3A5F),
+              ),
+              child: const Text(
+                'Guardar',
+                style: TextStyle(color: Colors.white),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> _updateAmbulance(
+    int ambulanceId,
+    String plate,
+    String sedesCode,
+    String type,
+  ) async {
+    try {
+      final authRepo = sl<AuthRepository>();
+      final session = await authRepo.getUserSession();
+      if (session != null) {
+        final dataSource = sl<CompanyAdminRemoteDataSource>();
+        await dataSource.updateAmbulance(
+          ambulanceId: ambulanceId,
+          plate: plate,
+          sedesCode: sedesCode,
+          type: type,
+          token: session.accessToken,
+        );
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('✅ Ambulancia actualizada'),
+            backgroundColor: Colors.green,
+          ),
+        );
+        _loadAmbulances();
+      }
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Error: ${e.toString().replaceAll('Exception: ', '')}'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
+  }
+
+  void _showDeleteAmbulanceDialog(BuildContext context, int? ambulanceId) {
+    if (ambulanceId == null) return;
+
+    showDialog(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Eliminar Ambulancia'),
+        content: const Text(
+          '¿Estás seguro de que deseas eliminar esta ambulancia?\n\nEsta acción no se puede deshacer.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext),
+            child: const Text('Cancelar'),
+          ),
+          ElevatedButton(
+            onPressed: () async {
+              Navigator.pop(dialogContext);
+              await _deleteAmbulance(ambulanceId);
+            },
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+            child: const Text(
+              'Eliminar',
+              style: TextStyle(color: Colors.white),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _deleteAmbulance(int ambulanceId) async {
+    try {
+      final authRepo = sl<AuthRepository>();
+      final session = await authRepo.getUserSession();
+      if (session != null) {
+        final dataSource = sl<CompanyAdminRemoteDataSource>();
+        await dataSource.deleteAmbulance(
+          ambulanceId: ambulanceId,
+          token: session.accessToken,
+        );
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('✅ Ambulancia eliminada'),
             backgroundColor: Colors.green,
           ),
         );
