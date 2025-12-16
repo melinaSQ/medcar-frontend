@@ -10,6 +10,9 @@ abstract class ShiftsRemoteDataSource {
     required int ambulanceId,
     required String token,
   });
+  Future<List<Map<String, dynamic>>> getDriverShiftHistory({
+    required String token,
+  });
 }
 
 class ShiftsRemoteDataSourceImpl implements ShiftsRemoteDataSource {
@@ -18,7 +21,9 @@ class ShiftsRemoteDataSourceImpl implements ShiftsRemoteDataSource {
   ShiftsRemoteDataSourceImpl({required this.client});
 
   @override
-  Future<List<Map<String, dynamic>>> getActiveShifts({required String token}) async {
+  Future<List<Map<String, dynamic>>> getActiveShifts({
+    required String token,
+  }) async {
     final response = await client.get(
       Uri.parse('$apiUrl/shifts/active'),
       headers: {
@@ -32,7 +37,9 @@ class ShiftsRemoteDataSourceImpl implements ShiftsRemoteDataSource {
       return data.cast<Map<String, dynamic>>();
     } else {
       final errorBody = json.decode(response.body);
-      throw Exception(errorBody['message'] ?? 'Error al obtener turnos activos');
+      throw Exception(
+        errorBody['message'] ?? 'Error al obtener turnos activos',
+      );
     }
   }
 
@@ -57,5 +64,27 @@ class ShiftsRemoteDataSourceImpl implements ShiftsRemoteDataSource {
       throw Exception(errorBody['message'] ?? 'Error al generar código');
     }
   }
-}
 
+  @override
+  Future<List<Map<String, dynamic>>> getDriverShiftHistory({
+    required String token,
+  }) async {
+    final response = await client.get(
+      Uri.parse('$apiUrl/shifts/my-history'),
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer $token',
+      },
+    );
+
+    if (response.statusCode == 200) {
+      final List<dynamic> data = json.decode(response.body);
+      return data.cast<Map<String, dynamic>>();
+    } else {
+      final errorBody = json.decode(response.body);
+      throw Exception(
+        errorBody['message'] ?? 'Error al obtener historial de turnos',
+      );
+    }
+  }
+}

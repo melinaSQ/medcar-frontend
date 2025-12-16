@@ -551,13 +551,29 @@ class _DriverHomeViewState extends State<_DriverHomeView> {
             ],
           ),
           body: _buildBody(context, state),
-          floatingActionButton: FloatingActionButton(
-            onPressed: () {
-              Navigator.pushNamed(context, 'driver/history');
-            },
-            backgroundColor: Colors.white,
-            child: const Icon(Icons.history, color: Color(0xFF2E7D32)),
-            tooltip: 'Ver historial',
+          floatingActionButton: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              FloatingActionButton(
+                heroTag: 'shifts_history',
+                onPressed: () {
+                  Navigator.pushNamed(context, 'driver/shifts-history');
+                },
+                backgroundColor: const Color(0xFF2E7D32),
+                child: const Icon(Icons.access_time, color: Colors.white),
+                tooltip: 'Historial de Turnos',
+              ),
+              const SizedBox(height: 12),
+              FloatingActionButton(
+                heroTag: 'services_history',
+                onPressed: () {
+                  Navigator.pushNamed(context, 'driver/history');
+                },
+                backgroundColor: Colors.white,
+                child: const Icon(Icons.history, color: Color(0xFF2E7D32)),
+                tooltip: 'Historial de Servicios',
+              ),
+            ],
           ),
         );
       },

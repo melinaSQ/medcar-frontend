@@ -15,6 +15,7 @@ import 'package:medcar_frontend/src/presentation/pages/company/home/company_home
 import 'package:medcar_frontend/src/presentation/pages/driver/home/driver_home_page.dart';
 import 'package:medcar_frontend/src/presentation/pages/driver/history/driver_history_page.dart';
 import 'package:medcar_frontend/src/presentation/pages/driver/ratings/driver_ratings_page.dart';
+import 'package:medcar_frontend/src/presentation/pages/driver/shifts_history/driver_shifts_history_page.dart';
 import 'package:medcar_frontend/src/presentation/pages/profile/profile_page.dart';
 import 'package:medcar_frontend/src/presentation/pages/roles/role_selection_page.dart';
 import 'package:medcar_frontend/src/presentation/pages/splash/splash_page.dart';
@@ -48,6 +49,8 @@ class MyApp extends StatelessWidget {
           'driver/home': (BuildContext context) => const DriverHomePage(),
           'driver/history': (BuildContext context) => const DriverHistoryPage(),
           'driver/ratings': (BuildContext context) => const DriverRatingsPage(),
+          'driver/shifts-history': (BuildContext context) =>
+              const DriverShiftsHistoryPage(),
           'profile': (BuildContext context) => const ProfilePage(),
         },
         onGenerateRoute: (settings) {
