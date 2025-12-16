@@ -19,7 +19,9 @@ abstract class ServiceRequestRemoteDataSource {
     required String token,
   });
 
-  Future<List<Map<String, dynamic>>> getPendingRequests({required String token});
+  Future<List<Map<String, dynamic>>> getPendingRequests({
+    required String token,
+  });
 
   Future<Map<String, dynamic>> assignRequest({
     required int requestId,
@@ -28,9 +30,16 @@ abstract class ServiceRequestRemoteDataSource {
   });
 
   Future<Map<String, dynamic>?> getActiveRequest({required String token});
+
+  Future<List<Map<String, dynamic>>> getMyHistory({required String token});
+
+  Future<List<Map<String, dynamic>>> getDriverHistory({required String token});
+
+  Future<List<Map<String, dynamic>>> getCompanyHistory({required String token});
 }
 
-class ServiceRequestRemoteDataSourceImpl implements ServiceRequestRemoteDataSource {
+class ServiceRequestRemoteDataSourceImpl
+    implements ServiceRequestRemoteDataSource {
   final http.Client client;
 
   ServiceRequestRemoteDataSourceImpl({required this.client});
@@ -90,7 +99,9 @@ class ServiceRequestRemoteDataSourceImpl implements ServiceRequestRemoteDataSour
   }
 
   @override
-  Future<List<Map<String, dynamic>>> getPendingRequests({required String token}) async {
+  Future<List<Map<String, dynamic>>> getPendingRequests({
+    required String token,
+  }) async {
     final response = await client.get(
       Uri.parse('$apiUrl/service-requests/pending'),
       headers: {
@@ -120,10 +131,7 @@ class ServiceRequestRemoteDataSourceImpl implements ServiceRequestRemoteDataSour
         'Content-Type': 'application/json',
         'Authorization': 'Bearer $token',
       },
-      body: json.encode({
-        'requestId': requestId,
-        'shiftId': shiftId,
-      }),
+      body: json.encode({'requestId': requestId, 'shiftId': shiftId}),
     );
 
     if (response.statusCode == 200) {
@@ -135,7 +143,9 @@ class ServiceRequestRemoteDataSourceImpl implements ServiceRequestRemoteDataSour
   }
 
   @override
-  Future<Map<String, dynamic>?> getActiveRequest({required String token}) async {
+  Future<Map<String, dynamic>?> getActiveRequest({
+    required String token,
+  }) async {
     final response = await client.get(
       Uri.parse('$apiUrl/service-requests/my-active'),
       headers: {
@@ -152,5 +162,67 @@ class ServiceRequestRemoteDataSourceImpl implements ServiceRequestRemoteDataSour
       return null;
     }
   }
-}
 
+  @override
+  Future<List<Map<String, dynamic>>> getMyHistory({
+    required String token,
+  }) async {
+    final response = await client.get(
+      Uri.parse('$apiUrl/service-requests/my-history'),
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer $token',
+      },
+    );
+
+    if (response.statusCode == 200) {
+      final List<dynamic> data = json.decode(response.body);
+      return data.cast<Map<String, dynamic>>();
+    } else {
+      final errorBody = json.decode(response.body);
+      throw Exception(errorBody['message'] ?? 'Error al obtener historial');
+    }
+  }
+
+  @override
+  Future<List<Map<String, dynamic>>> getDriverHistory({
+    required String token,
+  }) async {
+    final response = await client.get(
+      Uri.parse('$apiUrl/service-requests/driver-history'),
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer $token',
+      },
+    );
+
+    if (response.statusCode == 200) {
+      final List<dynamic> data = json.decode(response.body);
+      return data.cast<Map<String, dynamic>>();
+    } else {
+      final errorBody = json.decode(response.body);
+      throw Exception(errorBody['message'] ?? 'Error al obtener historial');
+    }
+  }
+
+  @override
+  Future<List<Map<String, dynamic>>> getCompanyHistory({
+    required String token,
+  }) async {
+    final response = await client.get(
+      Uri.parse('$apiUrl/service-requests/company-history'),
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer $token',
+      },
+    );
+
+    if (response.statusCode == 200) {
+      final List<dynamic> data = json.decode(response.body);
+      return data.cast<Map<String, dynamic>>();
+    } else {
+      final errorBody = json.decode(response.body);
+      throw Exception(errorBody['message'] ?? 'Error al obtener historial');
+    }
+  }
+}

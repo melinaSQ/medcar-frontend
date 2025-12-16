@@ -1,6 +1,6 @@
 // lib/src/presentation/pages/driver/home/driver_home_page.dart
 
-// ignore_for_file: avoid_print, deprecated_member_use
+// ignore_for_file: avoid_print, deprecated_member_use, unnecessary_brace_in_string_interps, sort_child_properties_last
 
 import 'dart:async';
 import 'package:flutter/material.dart';
@@ -533,6 +533,14 @@ class _DriverHomeViewState extends State<_DriverHomeView> {
             ],
           ),
           body: _buildBody(context, state),
+          floatingActionButton: FloatingActionButton(
+            onPressed: () {
+              Navigator.pushNamed(context, 'driver/history');
+            },
+            backgroundColor: Colors.white,
+            child: const Icon(Icons.history, color: Color(0xFF2E7D32)),
+            tooltip: 'Ver historial',
+          ),
         );
       },
     );

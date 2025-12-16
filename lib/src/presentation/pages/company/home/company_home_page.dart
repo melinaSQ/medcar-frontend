@@ -1,6 +1,6 @@
 // lib/src/presentation/pages/company/home/company_home_page.dart
 
-// ignore_for_file: avoid_print, deprecated_member_use, use_build_context_synchronously
+// ignore_for_file: avoid_print, deprecated_member_use, use_build_context_synchronously, unnecessary_brace_in_string_interps, no_leading_underscores_for_local_identifiers
 
 import 'dart:async';
 import 'package:flutter/material.dart';
@@ -56,6 +56,8 @@ class _CompanyHomeViewState extends State<_CompanyHomeView> {
   // Datos locales para tabs
   List<Map<String, dynamic>> _ambulances = [];
   List<Map<String, dynamic>> _drivers = [];
+  List<Map<String, dynamic>> _history = [];
+  bool _isLoadingHistory = false;
   bool _isLoadingAmbulances = false;
   bool _isLoadingDrivers = false;
 
@@ -256,6 +258,27 @@ class _CompanyHomeViewState extends State<_CompanyHomeView> {
       }
     } finally {
       setState(() => _isLoadingDrivers = false);
+    }
+  }
+
+  Future<void> _loadHistory() async {
+    setState(() => _isLoadingHistory = true);
+    try {
+      final authRepo = sl<AuthRepository>();
+      final session = await authRepo.getUserSession();
+      if (session != null) {
+        final dataSource = sl<ServiceRequestRemoteDataSource>();
+        final history = await dataSource.getCompanyHistory(
+          token: session.accessToken,
+        );
+        setState(() {
+          _history = history;
+          _isLoadingHistory = false;
+        });
+      }
+    } catch (e) {
+      print('Error cargando historial: $e');
+      setState(() => _isLoadingHistory = false);
     }
   }
 
@@ -540,6 +563,7 @@ class _CompanyHomeViewState extends State<_CompanyHomeView> {
                     _buildAmbulancesTab(context),
                     _buildDriversTab(context),
                     _buildShiftCodesTab(context),
+                    _buildHistoryTab(context),
                   ],
                 ),
           bottomNavigationBar: BottomNavigationBar(
@@ -552,6 +576,7 @@ class _CompanyHomeViewState extends State<_CompanyHomeView> {
               if (index == 1 && _ambulances.isEmpty) _loadAmbulances();
               if (index == 2 && _drivers.isEmpty) _loadDrivers();
               if (index == 3 && _ambulances.isEmpty) _loadAmbulances();
+              if (index == 4 && _history.isEmpty) _loadHistory();
             },
             items: const [
               BottomNavigationBarItem(
@@ -569,6 +594,10 @@ class _CompanyHomeViewState extends State<_CompanyHomeView> {
               BottomNavigationBarItem(
                 icon: Icon(Icons.qr_code),
                 label: 'Códigos',
+              ),
+              BottomNavigationBarItem(
+                icon: Icon(Icons.history),
+                label: 'Historial',
               ),
             ],
           ),
@@ -1350,6 +1379,225 @@ class _CompanyHomeViewState extends State<_CompanyHomeView> {
           ),
         ],
       ),
+    );
+  }
+
+  // ==================== TAB HISTORIAL ====================
+  Widget _buildHistoryTab(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              const Text(
+                '📋 Historial de Servicios',
+                style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+              ),
+              IconButton(
+                icon: const Icon(Icons.refresh),
+                onPressed: _loadHistory,
+                tooltip: 'Actualizar',
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+          Expanded(
+            child: _isLoadingHistory
+                ? const Center(child: CircularProgressIndicator())
+                : _history.isEmpty
+                ? Center(
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(Icons.history, size: 64, color: Colors.grey[400]),
+                        const SizedBox(height: 16),
+                        Text(
+                          'No hay historial de servicios',
+                          style: TextStyle(color: Colors.grey[600]),
+                        ),
+                        const SizedBox(height: 8),
+                        Text(
+                          'Los servicios completados y cancelados aparecerán aquí',
+                          style: TextStyle(color: Colors.grey[500]),
+                          textAlign: TextAlign.center,
+                        ),
+                      ],
+                    ),
+                  )
+                : RefreshIndicator(
+                    onRefresh: _loadHistory,
+                    child: ListView.builder(
+                      itemCount: _history.length,
+                      itemBuilder: (context, index) {
+                        final service = _history[index];
+                        return _buildHistoryCard(service);
+                      },
+                    ),
+                  ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildHistoryCard(Map<String, dynamic> service) {
+    final status = service['status'] as String? ?? '';
+    final emergencyType = service['emergencyType'] as String? ?? '';
+    final createdAt = service['createdAt'] as String?;
+    final client = service['client'] as Map<String, dynamic>?;
+    final shift = service['shift'] as Map<String, dynamic>?;
+    final ambulance = shift?['ambulance'] as Map<String, dynamic>?;
+    final driver = shift?['driver'] as Map<String, dynamic>?;
+
+    DateTime? date;
+    if (createdAt != null) {
+      try {
+        date = DateTime.parse(createdAt);
+      } catch (e) {
+        // Ignorar error de parsing
+      }
+    }
+
+    String _getEmergencyTypeText(String type) {
+      switch (type) {
+        case 'TRAFFIC_ACCIDENT':
+          return 'Accidente de tránsito';
+        case 'MEDICAL_EMERGENCY':
+          return 'Emergencia médica';
+        case 'FIRE':
+          return 'Incendio';
+        case 'OTHER':
+          return 'Otro';
+        default:
+          return type;
+      }
+    }
+
+    String _getStatusText(String status) {
+      switch (status) {
+        case 'COMPLETED':
+          return 'Completado';
+        case 'CANCELED':
+          return 'Cancelado';
+        default:
+          return status;
+      }
+    }
+
+    Color _getStatusColor(String status) {
+      switch (status) {
+        case 'COMPLETED':
+          return Colors.green;
+        case 'CANCELED':
+          return Colors.red;
+        default:
+          return Colors.grey;
+      }
+    }
+
+    return Card(
+      margin: const EdgeInsets.only(bottom: 12),
+      elevation: 2,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        _getEmergencyTypeText(emergencyType),
+                        style: const TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      if (date != null) ...[
+                        const SizedBox(height: 4),
+                        Text(
+                          '${date.day}/${date.month}/${date.year} ${date.hour}:${date.minute.toString().padLeft(2, '0')}',
+                          style: TextStyle(
+                            fontSize: 14,
+                            color: Colors.grey[600],
+                          ),
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 6,
+                  ),
+                  decoration: BoxDecoration(
+                    color: _getStatusColor(status).withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(20),
+                    border: Border.all(
+                      color: _getStatusColor(status),
+                      width: 1,
+                    ),
+                  ),
+                  child: Text(
+                    _getStatusText(status),
+                    style: TextStyle(
+                      color: _getStatusColor(status),
+                      fontWeight: FontWeight.bold,
+                      fontSize: 12,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            if (client != null || ambulance != null || driver != null) ...[
+              const Divider(height: 24),
+              if (client != null)
+                _buildHistoryInfoRow(
+                  Icons.person,
+                  'Cliente: ${client['name'] ?? ''} ${client['lastname'] ?? ''}',
+                ),
+              if (ambulance != null) ...[
+                const SizedBox(height: 8),
+                _buildHistoryInfoRow(
+                  Icons.local_shipping,
+                  'Ambulancia: ${ambulance['plate'] ?? 'N/A'}',
+                ),
+              ],
+              if (driver != null) ...[
+                const SizedBox(height: 8),
+                _buildHistoryInfoRow(
+                  Icons.person_outline,
+                  'Conductor: ${driver['name'] ?? ''} ${driver['lastname'] ?? ''}',
+                ),
+              ],
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildHistoryInfoRow(IconData icon, String text) {
+    return Row(
+      children: [
+        Icon(icon, size: 18, color: Colors.grey[600]),
+        const SizedBox(width: 8),
+        Expanded(
+          child: Text(
+            text,
+            style: TextStyle(fontSize: 14, color: Colors.grey[700]),
+          ),
+        ),
+      ],
     );
   }
 

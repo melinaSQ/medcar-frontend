@@ -52,6 +52,9 @@ dependencies:
   
   # Para WebSockets (comunicación en tiempo real)
   socket_io_client: ^2.0.3+1
+  
+  # Para formatear fechas
+  intl: ^0.19.0
 
 dev_dependencies:
   flutter_test:

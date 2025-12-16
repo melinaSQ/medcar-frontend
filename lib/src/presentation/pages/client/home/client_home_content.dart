@@ -1,4 +1,4 @@
-// ignore_for_file: deprecated_member_use
+// ignore_for_file: deprecated_member_use, sort_child_properties_last
 
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
@@ -16,10 +16,13 @@ class ClientHomeContent extends StatelessWidget {
     return Scaffold(
       appBar: AppBar(
         title: Text(
-          state.status == ClientHomeStatus.loaded 
-            ? 'Hola, ${state.userName}' 
-            : 'MedCar',
-          style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+          state.status == ClientHomeStatus.loaded
+              ? 'Hola, ${state.userName}'
+              : 'MedCar',
+          style: const TextStyle(
+            color: Colors.white,
+            fontWeight: FontWeight.bold,
+          ),
         ),
         backgroundColor: const Color(0xFF652580),
         iconTheme: const IconThemeData(color: Colors.white),
@@ -40,6 +43,14 @@ class ClientHomeContent extends StatelessWidget {
         ],
       ),
       body: _buildBody(context),
+      floatingActionButton: FloatingActionButton(
+        onPressed: () {
+          Navigator.pushNamed(context, 'client/history');
+        },
+        backgroundColor: Colors.white,
+        child: const Icon(Icons.history, color: Color(0xFF652580)),
+        tooltip: 'Ver historial',
+      ),
     );
   }
 
@@ -55,10 +66,7 @@ class ClientHomeContent extends StatelessWidget {
         gradient: LinearGradient(
           begin: Alignment.topCenter,
           end: Alignment.bottomCenter,
-          colors: [
-            Color(0xFF652580),
-            Color(0xFF00A099),
-          ],
+          colors: [Color(0xFF652580), Color(0xFF00A099)],
         ),
       ),
       child: SafeArea(
@@ -75,20 +83,17 @@ class ClientHomeContent extends StatelessWidget {
                   height: 100,
                 ),
                 const SizedBox(height: 40),
-                
+
                 // Botón principal
                 _buildEmergencyButton(context),
-                
+
                 const SizedBox(height: 30),
-                
+
                 // Texto informativo
                 const Text(
                   'Presiona el botón para solicitar una ambulancia',
                   textAlign: TextAlign.center,
-                  style: TextStyle(
-                    color: Colors.white,
-                    fontSize: 16,
-                  ),
+                  style: TextStyle(color: Colors.white, fontSize: 16),
                 ),
               ],
             ),
@@ -120,11 +125,7 @@ class ClientHomeContent extends StatelessWidget {
         child: const Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(
-              Icons.local_hospital,
-              size: 60,
-              color: Colors.white,
-            ),
+            Icon(Icons.local_hospital, size: 60, color: Colors.white),
             SizedBox(height: 8),
             Text(
               'EMERGENCIA',
@@ -166,4 +167,3 @@ class ClientHomeContent extends StatelessWidget {
     );
   }
 }
-

@@ -1,6 +1,6 @@
 // lib/src/presentation/pages/client/tracking/request_tracking_page.dart
 
-// ignore_for_file: avoid_print, deprecated_member_use
+// ignore_for_file: avoid_print, deprecated_member_use, unnecessary_brace_in_string_interps
 
 import 'dart:async';
 import 'package:flutter/material.dart';

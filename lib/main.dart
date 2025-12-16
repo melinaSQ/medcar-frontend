@@ -10,8 +10,10 @@ import 'package:medcar_frontend/src/presentation/pages/client/home/client_home_p
 import 'package:medcar_frontend/src/presentation/pages/client/map/client_map_page.dart';
 import 'package:medcar_frontend/src/presentation/pages/client/tracking/request_tracking_page.dart';
 import 'package:medcar_frontend/src/presentation/pages/client/rating/rating_page.dart';
+import 'package:medcar_frontend/src/presentation/pages/client/history/client_history_page.dart';
 import 'package:medcar_frontend/src/presentation/pages/company/home/company_home_page.dart';
 import 'package:medcar_frontend/src/presentation/pages/driver/home/driver_home_page.dart';
+import 'package:medcar_frontend/src/presentation/pages/driver/history/driver_history_page.dart';
 import 'package:medcar_frontend/src/presentation/pages/roles/role_selection_page.dart';
 import 'package:medcar_frontend/src/presentation/pages/splash/splash_page.dart';
 
@@ -39,8 +41,10 @@ class MyApp extends StatelessWidget {
           'roles': (BuildContext context) => const RoleSelectionPage(),
           'client/home': (BuildContext context) => const ClientHomePage(),
           'client/map': (BuildContext context) => const ClientMapPage(),
+          'client/history': (BuildContext context) => const ClientHistoryPage(),
           'company/home': (BuildContext context) => const CompanyHomePage(),
           'driver/home': (BuildContext context) => const DriverHomePage(),
+          'driver/history': (BuildContext context) => const DriverHistoryPage(),
         },
         onGenerateRoute: (settings) {
           // Ruta con parámetros para tracking
