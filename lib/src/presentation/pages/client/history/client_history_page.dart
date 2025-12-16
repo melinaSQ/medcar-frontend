@@ -7,6 +7,7 @@ import 'package:medcar_frontend/dependency_injection.dart' as di;
 import 'package:medcar_frontend/src/data/datasources/remote/service_request_remote_datasource.dart';
 import 'package:medcar_frontend/src/domain/repositories/auth_repository.dart';
 import 'package:intl/intl.dart';
+import 'package:medcar_frontend/src/utils/date_utils.dart';
 
 class ClientHistoryPage extends StatefulWidget {
   const ClientHistoryPage({super.key});
@@ -182,7 +183,7 @@ class _ClientHistoryPageState extends State<ClientHistoryPage> {
     DateTime? date;
     if (createdAt != null) {
       try {
-        date = DateTime.parse(createdAt);
+        date = parseToLocal(createdAt);
       } catch (e) {
         // Ignorar error de parsing
       }

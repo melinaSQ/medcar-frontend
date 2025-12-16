@@ -1,10 +1,10 @@
 // lib/src/presentation/pages/driver/shifts_history/driver_shifts_history_page.dart
 
 import 'package:flutter/material.dart';
-import 'package:intl/intl.dart';
 import 'package:medcar_frontend/dependency_injection.dart' as di;
 import 'package:medcar_frontend/src/data/datasources/remote/shifts_remote_datasource.dart';
 import 'package:medcar_frontend/src/domain/repositories/auth_repository.dart';
+import 'package:medcar_frontend/src/utils/date_utils.dart';
 
 class DriverShiftsHistoryPage extends StatefulWidget {
   const DriverShiftsHistoryPage({super.key});
@@ -54,7 +54,7 @@ class _DriverShiftsHistoryPageState extends State<DriverShiftsHistoryPage> {
 
   String _formatDate(DateTime? date) {
     if (date == null) return 'N/A';
-    return DateFormat('dd/MM/yyyy HH:mm').format(date);
+    return formatDate(date);
   }
 
   String _calculateDuration(DateTime? startTime, DateTime? endTime) {
@@ -146,10 +146,10 @@ class _DriverShiftsHistoryPageState extends State<DriverShiftsHistoryPage> {
                   final shift = _shifts[index];
                   final ambulance = shift['ambulance'] as Map<String, dynamic>?;
                   final startTime = shift['startTime'] != null
-                      ? DateTime.parse(shift['startTime'])
+                      ? parseToLocal(shift['startTime'])
                       : null;
                   final endTime = shift['endTime'] != null
-                      ? DateTime.parse(shift['endTime'])
+                      ? parseToLocal(shift['endTime'])
                       : null;
                   final serviceCount = _getServiceCount(shift);
 

@@ -7,6 +7,7 @@ import 'package:medcar_frontend/dependency_injection.dart' as di;
 import 'package:medcar_frontend/src/data/datasources/remote/ratings_remote_datasource.dart';
 import 'package:medcar_frontend/src/domain/repositories/auth_repository.dart';
 import 'package:intl/intl.dart';
+import 'package:medcar_frontend/src/utils/date_utils.dart';
 
 class DriverRatingsPage extends StatefulWidget {
   const DriverRatingsPage({super.key});
@@ -144,7 +145,7 @@ class _DriverRatingsPageState extends State<DriverRatingsPage> {
     DateTime? date;
     if (createdAt != null) {
       try {
-        date = DateTime.parse(createdAt);
+        date = parseToLocal(createdAt);
       } catch (e) {
         // Ignorar error de parsing
       }

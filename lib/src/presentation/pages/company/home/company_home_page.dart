@@ -13,6 +13,7 @@ import 'package:medcar_frontend/src/data/datasources/remote/service_request_remo
 import 'package:medcar_frontend/src/data/datasources/remote/shifts_remote_datasource.dart';
 import 'package:medcar_frontend/src/data/services/socket_service.dart';
 import 'package:medcar_frontend/src/domain/repositories/auth_repository.dart';
+import 'package:medcar_frontend/src/utils/date_utils.dart';
 import 'bloc/company_home_bloc.dart';
 import 'bloc/company_home_event.dart';
 import 'bloc/company_home_state.dart';
@@ -1862,7 +1863,7 @@ class _CompanyHomeViewState extends State<_CompanyHomeView> {
     DateTime? date;
     if (createdAt != null) {
       try {
-        date = DateTime.parse(createdAt);
+        date = parseToLocal(createdAt);
       } catch (e) {
         // Ignorar error de parsing
       }
@@ -2104,12 +2105,7 @@ class _CompanyHomeViewState extends State<_CompanyHomeView> {
   }
 
   String _formatDate(String dateStr) {
-    try {
-      final date = DateTime.parse(dateStr);
-      return '${date.day}/${date.month}/${date.year} ${date.hour}:${date.minute.toString().padLeft(2, '0')}';
-    } catch (e) {
-      return dateStr;
-    }
+    return formatDateString(dateStr);
   }
 
   // ==================== WIDGETS COMPARTIDOS ====================
