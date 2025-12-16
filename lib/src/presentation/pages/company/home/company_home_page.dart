@@ -8,6 +8,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:medcar_frontend/dependency_injection.dart';
 import 'package:medcar_frontend/src/data/datasources/remote/company_admin_remote_datasource.dart';
+import 'package:medcar_frontend/src/data/datasources/remote/ratings_remote_datasource.dart';
 import 'package:medcar_frontend/src/data/datasources/remote/service_request_remote_datasource.dart';
 import 'package:medcar_frontend/src/data/datasources/remote/shifts_remote_datasource.dart';
 import 'package:medcar_frontend/src/data/services/socket_service.dart';
@@ -46,6 +47,7 @@ class _CompanyHomeViewState extends State<_CompanyHomeView> {
   StreamSubscription? _requestAssignedSub;
   StreamSubscription? _locationUpdateSub;
   StreamSubscription? _requestCanceledSub;
+  StreamSubscription? _ratingCreatedSub;
   Timer? _refreshTimer;
   DateTime? _lastShiftRefresh;
 
@@ -57,11 +59,18 @@ class _CompanyHomeViewState extends State<_CompanyHomeView> {
   bool _isLoadingAmbulances = false;
   bool _isLoadingDrivers = false;
 
+  // Calificaciones
+  double? _companyRating;
+  int _companyRatingCount = 0;
+  Map<int, double> _driverRatings = {}; // driverId -> rating
+  Map<int, int> _driverRatingCounts = {}; // driverId -> count
+
   @override
   void initState() {
     super.initState();
     _initWebSocket();
     _startAutoRefresh();
+    _loadCompanyRating();
   }
 
   void _startAutoRefresh() {
@@ -141,6 +150,28 @@ class _CompanyHomeViewState extends State<_CompanyHomeView> {
               );
             }
           });
+
+      // Escuchar nuevas calificaciones para actualizar en tiempo real
+      _ratingCreatedSub = _socketService.onRatingCreated.listen((data) {
+        print('⭐ Admin: Evento rating_created recibido: $data');
+        if (mounted) {
+          // Recargar calificación de la empresa
+          _loadCompanyRating();
+          // Recargar calificaciones de conductores (siempre, no solo en la pestaña)
+          if (_drivers.isNotEmpty) {
+            final authRepo = sl<AuthRepository>();
+            authRepo.getUserSession().then((session) {
+              if (session != null && mounted) {
+                print('⭐ Admin: Recargando calificaciones de conductores...');
+                _loadDriverRatings(_drivers, session.accessToken);
+              }
+            });
+          } else {
+            // Si no hay conductores cargados, cargarlos primero
+            _loadDrivers();
+          }
+        }
+      });
     }
   }
 
@@ -151,6 +182,7 @@ class _CompanyHomeViewState extends State<_CompanyHomeView> {
     _requestAssignedSub?.cancel();
     _locationUpdateSub?.cancel();
     _requestCanceledSub?.cancel();
+    _ratingCreatedSub?.cancel();
     _refreshTimer?.cancel();
     _socketService.disconnect();
     super.dispose();
@@ -180,15 +212,232 @@ class _CompanyHomeViewState extends State<_CompanyHomeView> {
     try {
       final authRepo = sl<AuthRepository>();
       final session = await authRepo.getUserSession();
-      if (session != null) {
+      if (session != null && session.accessToken.isNotEmpty) {
         final dataSource = sl<CompanyAdminRemoteDataSource>();
         final drivers = await dataSource.getDrivers(token: session.accessToken);
         setState(() => _drivers = drivers);
+        // Cargar calificaciones de cada conductor
+        _loadDriverRatings(drivers, session.accessToken);
+      } else {
+        print('⚠️ Admin: No hay sesión válida para cargar conductores');
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text(
+                'Sesión expirada. Por favor, inicia sesión nuevamente.',
+              ),
+              backgroundColor: Colors.red,
+              duration: Duration(seconds: 5),
+            ),
+          );
+        }
       }
     } catch (e) {
-      print('Error cargando conductores: $e');
+      final errorMsg = e.toString();
+      print('❌ Error cargando conductores: $e');
+
+      // Si el error es de autenticación, mostrar mensaje al usuario
+      if (errorMsg.contains('401') ||
+          errorMsg.contains('Unauthorized') ||
+          errorMsg.contains('token') ||
+          errorMsg.contains('expirado') ||
+          errorMsg.contains('invalid')) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text(
+                'Token expirado. Por favor, inicia sesión nuevamente.',
+              ),
+              backgroundColor: Colors.orange,
+              duration: Duration(seconds: 5),
+            ),
+          );
+        }
+      }
     } finally {
       setState(() => _isLoadingDrivers = false);
+    }
+  }
+
+  Future<void> _loadCompanyRating() async {
+    try {
+      final authRepo = sl<AuthRepository>();
+      final session = await authRepo.getUserSession();
+      if (session != null && session.accessToken.isNotEmpty) {
+        final ratingsDs = sl<RatingsRemoteDataSource>();
+        final result = await ratingsDs.getCompanyAverageRating(
+          token: session.accessToken,
+        );
+        if (mounted) {
+          setState(() {
+            _companyRating = (result['average'] as num?)?.toDouble();
+            _companyRatingCount = result['count'] ?? 0;
+          });
+        }
+      } else {
+        print(
+          '⚠️ Admin: No hay sesión válida para cargar calificación de empresa',
+        );
+      }
+    } catch (e) {
+      final errorMsg = e.toString();
+      print('❌ Error cargando calificación de empresa: $e');
+
+      // Si el error es de autenticación, mostrar mensaje al usuario
+      if (errorMsg.contains('401') ||
+          errorMsg.contains('Unauthorized') ||
+          errorMsg.contains('token') ||
+          errorMsg.contains('expirado') ||
+          errorMsg.contains('invalid')) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text(
+                'Token expirado. Por favor, inicia sesión nuevamente.',
+              ),
+              backgroundColor: Colors.orange,
+              duration: Duration(seconds: 5),
+            ),
+          );
+        }
+      }
+    }
+  }
+
+  Future<void> _loadDriverRatings(
+    List<Map<String, dynamic>> drivers,
+    String token,
+  ) async {
+    print(
+      '⭐ Admin: _loadDriverRatings llamado para ${drivers.length} conductores',
+    );
+
+    // Validar que el token no esté vacío
+    if (token.isEmpty) {
+      print('❌ Admin: Token vacío, obteniendo nueva sesión...');
+      final authRepo = sl<AuthRepository>();
+      final session = await authRepo.getUserSession();
+      if (session == null || session.accessToken.isEmpty) {
+        print('❌ Admin: No hay sesión válida');
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text(
+                'Sesión expirada. Por favor, inicia sesión nuevamente.',
+              ),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
+        return;
+      }
+      token = session.accessToken;
+      print('✅ Admin: Token refrescado desde la sesión');
+    }
+
+    final ratingsDs = sl<RatingsRemoteDataSource>();
+
+    // Cargar todas las calificaciones primero
+    final Map<int, double> newRatings = {};
+    final Map<int, int> newCounts = {};
+    bool hasAuthError = false;
+
+    for (final driver in drivers) {
+      final driverId = driver['id'];
+      if (driverId != null) {
+        try {
+          print('⭐ Admin: Cargando calificación para conductor $driverId');
+          final result = await ratingsDs.getAverageRating(
+            userId: driverId,
+            token: token,
+          );
+          print('⭐ Admin: Resultado para conductor $driverId: $result');
+          final average = (result['average'] as num?)?.toDouble();
+          if (average != null && average > 0) {
+            newRatings[driverId] = average;
+          }
+          newCounts[driverId] = result['count'] ?? 0;
+          print(
+            '⭐ Admin: Calificación obtenida para conductor $driverId - promedio: $average, count: ${newCounts[driverId]}',
+          );
+        } catch (e) {
+          final errorMsg = e.toString();
+          print('❌ Error cargando calificación del conductor $driverId: $e');
+
+          // Si el error es de autenticación, intentar refrescar el token una vez
+          if ((errorMsg.contains('401') ||
+                  errorMsg.contains('Unauthorized') ||
+                  errorMsg.contains('token') ||
+                  errorMsg.contains('expirado') ||
+                  errorMsg.contains('invalid')) &&
+              !hasAuthError) {
+            hasAuthError = true;
+            print(
+              '⚠️ Admin: Error de autenticación detectado, intentando refrescar sesión...',
+            );
+            final authRepo = sl<AuthRepository>();
+            final session = await authRepo.getUserSession();
+            if (session != null && session.accessToken.isNotEmpty) {
+              // Actualizar el token y continuar con el siguiente conductor
+              token = session.accessToken;
+              print('✅ Admin: Token refrescado, continuando...');
+              // Reintentar con el mismo conductor
+              try {
+                final result = await ratingsDs.getAverageRating(
+                  userId: driverId,
+                  token: token,
+                );
+                final average = (result['average'] as num?)?.toDouble();
+                if (average != null && average > 0) {
+                  newRatings[driverId] = average;
+                }
+                newCounts[driverId] = result['count'] ?? 0;
+                print(
+                  '✅ Admin: Calificación cargada después de refrescar token',
+                );
+              } catch (e2) {
+                print('❌ Admin: Error persistente después de refrescar: $e2');
+                if (mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text(
+                        'Token expirado. Por favor, inicia sesión nuevamente.',
+                      ),
+                      backgroundColor: Colors.orange,
+                      duration: Duration(seconds: 5),
+                    ),
+                  );
+                }
+                break; // Salir del loop si el token sigue siendo inválido
+              }
+            } else {
+              if (mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text(
+                      'Sesión expirada. Por favor, inicia sesión nuevamente.',
+                    ),
+                    backgroundColor: Colors.red,
+                    duration: Duration(seconds: 5),
+                  ),
+                );
+              }
+              break;
+            }
+          }
+        }
+      }
+    }
+
+    // Actualizar el estado una sola vez con todas las calificaciones
+    if (mounted) {
+      setState(() {
+        _driverRatings = newRatings;
+        _driverRatingCounts = newCounts;
+        print(
+          '⭐ Admin: Estado actualizado con ${newRatings.length} calificaciones',
+        );
+      });
     }
   }
 
@@ -217,12 +466,40 @@ class _CompanyHomeViewState extends State<_CompanyHomeView> {
         return Scaffold(
           backgroundColor: const Color(0xFFF5F5F5),
           appBar: AppBar(
-            title: Text(
-              'Hola, ${state.userName}',
-              style: const TextStyle(
-                color: Colors.white,
-                fontWeight: FontWeight.bold,
-              ),
+            title: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Hola, ${state.userName}',
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                if (_companyRating != null && _companyRating! > 0)
+                  Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      ...List.generate(5, (index) {
+                        return Icon(
+                          index < _companyRating!.round()
+                              ? Icons.star
+                              : Icons.star_border,
+                          size: 14,
+                          color: Colors.amber,
+                        );
+                      }),
+                      const SizedBox(width: 4),
+                      Text(
+                        '${_companyRating!.toStringAsFixed(1)} (${_companyRatingCount})',
+                        style: const TextStyle(
+                          fontSize: 12,
+                          color: Colors.white70,
+                        ),
+                      ),
+                    ],
+                  ),
+              ],
             ),
             backgroundColor: const Color(0xFF1E3A5F),
             actions: [
@@ -635,6 +912,9 @@ class _CompanyHomeViewState extends State<_CompanyHomeView> {
               : RefreshIndicator(
                   onRefresh: _loadDrivers,
                   child: ListView.builder(
+                    key: ValueKey(
+                      'drivers_list_${_driverRatings.length}_${_driverRatings.values.fold(0.0, (sum, rating) => sum + rating)}',
+                    ),
                     padding: const EdgeInsets.symmetric(horizontal: 16),
                     itemCount: _drivers.length,
                     itemBuilder: (context, index) =>
@@ -646,8 +926,51 @@ class _CompanyHomeViewState extends State<_CompanyHomeView> {
     );
   }
 
+  Widget _buildDriverRating(int? driverId) {
+    if (driverId == null) return const SizedBox.shrink();
+
+    final rating = _driverRatings[driverId];
+    final count = _driverRatingCounts[driverId] ?? 0;
+
+    if (rating != null && rating > 0 && count > 0) {
+      return Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          ...List.generate(5, (index) {
+            return Icon(
+              index < rating.round() ? Icons.star : Icons.star_border,
+              size: 14,
+              color: Colors.amber,
+            );
+          }),
+          const SizedBox(width: 4),
+          Text(
+            '${rating.toStringAsFixed(1)} ($count)',
+            style: TextStyle(fontSize: 12, color: Colors.grey[700]),
+          ),
+        ],
+      );
+    } else {
+      return Text(
+        'Sin calificaciones aún',
+        style: TextStyle(
+          fontSize: 12,
+          color: Colors.grey[600],
+          fontStyle: FontStyle.italic,
+        ),
+      );
+    }
+  }
+
   Widget _buildDriverCard(Map<String, dynamic> driver) {
+    final driverId = driver['id'];
+    final rating = driverId != null ? _driverRatings[driverId] : null;
+    final count = driverId != null ? _driverRatingCounts[driverId] ?? 0 : 0;
+    // Key único basado en el ID y la calificación para forzar reconstrucción
+    final cardKey = ValueKey('driver_${driverId}_${rating}_$count');
+
     return Card(
+      key: cardKey,
       margin: const EdgeInsets.only(bottom: 12),
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
       child: ListTile(
@@ -671,6 +994,8 @@ class _CompanyHomeViewState extends State<_CompanyHomeView> {
           children: [
             Text(driver['email'] ?? 'Sin email'),
             Text('📱 ${driver['phone'] ?? 'Sin teléfono'}'),
+            const SizedBox(height: 4),
+            _buildDriverRating(driver['id']),
           ],
         ),
         trailing: IconButton(

@@ -9,6 +9,7 @@ import 'package:geolocator/geolocator.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:medcar_frontend/dependency_injection.dart';
 import 'package:medcar_frontend/src/data/datasources/remote/driver_remote_datasource.dart';
+import 'package:medcar_frontend/src/data/datasources/remote/ratings_remote_datasource.dart';
 import 'package:medcar_frontend/src/data/services/directions_service.dart';
 import 'package:medcar_frontend/src/data/services/socket_service.dart';
 import 'package:medcar_frontend/src/domain/repositories/auth_repository.dart';
@@ -48,6 +49,7 @@ class _DriverHomeViewState extends State<_DriverHomeView> {
   StreamSubscription? _missionSub;
   StreamSubscription? _canceledSub;
   StreamSubscription? _statusUpdateSub;
+  StreamSubscription? _ratingCreatedSub;
   int? _currentShiftId;
 
   // Flag para evitar procesar cancelación múltiples veces
@@ -59,10 +61,45 @@ class _DriverHomeViewState extends State<_DriverHomeView> {
   String? _distance;
   LatLng? _driverPosition;
 
+  // Calificación del conductor
+  double? _driverRating;
+  int _driverRatingCount = 0;
+
   @override
   void initState() {
     super.initState();
     _initWebSocket();
+    _loadDriverRating();
+  }
+
+  Future<void> _loadDriverRating() async {
+    print('⭐ Conductor: _loadDriverRating llamado');
+    try {
+      final authRepo = sl<AuthRepository>();
+      final session = await authRepo.getUserSession();
+      if (session != null) {
+        print(
+          '⭐ Conductor: Cargando calificación para userId: ${session.user.id}',
+        );
+        final ratingsDs = sl<RatingsRemoteDataSource>();
+        final result = await ratingsDs.getAverageRating(
+          userId: session.user.id,
+          token: session.accessToken,
+        );
+        print('⭐ Conductor: Resultado de calificación: $result');
+        if (mounted) {
+          setState(() {
+            _driverRating = (result['average'] as num?)?.toDouble();
+            _driverRatingCount = result['count'] ?? 0;
+            print(
+              '⭐ Conductor: Calificación actualizada - promedio: $_driverRating, count: $_driverRatingCount',
+            );
+          });
+        }
+      }
+    } catch (e) {
+      print('❌ Error cargando calificación del conductor: $e');
+    }
   }
 
   Future<void> _initWebSocket() async {
@@ -119,6 +156,15 @@ class _DriverHomeViewState extends State<_DriverHomeView> {
             !_isProcessingCancellation) {
           print('🚫 Conductor: Detectada cancelación via statusUpdateStream');
           _handleMissionCanceled();
+        }
+      });
+
+      // Escuchar nuevas calificaciones para actualizar en tiempo real
+      _ratingCreatedSub = _socketService.onRatingCreated.listen((data) {
+        print('⭐ Conductor: Evento rating_created recibido: $data');
+        if (mounted) {
+          print('⭐ Conductor: Recargando calificación...');
+          _loadDriverRating();
         }
       });
     }
@@ -382,6 +428,7 @@ class _DriverHomeViewState extends State<_DriverHomeView> {
     _missionSub?.cancel();
     _canceledSub?.cancel();
     _statusUpdateSub?.cancel();
+    _ratingCreatedSub?.cancel();
     _socketService.disconnect();
     _mapController?.dispose();
     super.dispose();
@@ -421,12 +468,40 @@ class _DriverHomeViewState extends State<_DriverHomeView> {
         return Scaffold(
           backgroundColor: const Color(0xFFF5F5F5),
           appBar: AppBar(
-            title: Text(
-              'Hola, ${state.userName}',
-              style: const TextStyle(
-                color: Colors.white,
-                fontWeight: FontWeight.bold,
-              ),
+            title: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Hola, ${state.userName}',
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                if (_driverRating != null && _driverRating! > 0)
+                  Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      ...List.generate(5, (index) {
+                        return Icon(
+                          index < _driverRating!.round()
+                              ? Icons.star
+                              : Icons.star_border,
+                          size: 14,
+                          color: Colors.amber,
+                        );
+                      }),
+                      const SizedBox(width: 4),
+                      Text(
+                        '${_driverRating!.toStringAsFixed(1)} (${_driverRatingCount})',
+                        style: const TextStyle(
+                          fontSize: 12,
+                          color: Colors.white70,
+                        ),
+                      ),
+                    ],
+                  ),
+              ],
             ),
             backgroundColor: const Color(0xFF2E7D32),
             actions: [

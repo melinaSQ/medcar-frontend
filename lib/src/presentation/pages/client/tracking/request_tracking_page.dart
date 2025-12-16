@@ -52,6 +52,11 @@ class _RequestTrackingPageState extends State<RequestTrackingPage> {
   double? _driverRating;
   int _driverRatingCount = 0;
 
+  // Calificación promedio de la empresa
+  double? _companyRating;
+  int _companyRatingCount = 0;
+  int? _companyUserId;
+
   Set<Marker> _markers = {};
   Set<Polyline> _polylines = {};
 
@@ -60,6 +65,7 @@ class _RequestTrackingPageState extends State<RequestTrackingPage> {
   StreamSubscription? _assignedSub;
   StreamSubscription? _locationSub;
   StreamSubscription? _statusSub;
+  StreamSubscription? _ratingCreatedSub;
 
   @override
   void initState() {
@@ -122,6 +128,17 @@ class _RequestTrackingPageState extends State<RequestTrackingPage> {
           }
           if (ambulance != null) {
             _ambulancePlate = ambulance['plate'];
+            final company = ambulance['company'] as Map<String, dynamic>?;
+            if (company != null) {
+              final companyUser = company['user'] as Map<String, dynamic>?;
+              if (companyUser != null) {
+                _companyUserId = companyUser['id'];
+                // Cargar calificación de la empresa
+                if (_companyUserId != null) {
+                  await _loadCompanyRating(_companyUserId!);
+                }
+              }
+            }
           }
         }
 
@@ -141,6 +158,16 @@ class _RequestTrackingPageState extends State<RequestTrackingPage> {
 
       _statusSub = _socketService.statusUpdateStream.listen((update) {
         _handleStatusUpdate(update);
+      });
+
+      // Escuchar nuevas calificaciones para actualizar en tiempo real
+      _ratingCreatedSub = _socketService.onRatingCreated.listen((data) {
+        if (mounted && _driverId != null) {
+          _loadDriverRating(_driverId!);
+        }
+        if (mounted && _companyUserId != null) {
+          _loadCompanyRating(_companyUserId!);
+        }
       });
 
       // Conectar
@@ -440,6 +467,29 @@ class _RequestTrackingPageState extends State<RequestTrackingPage> {
     }
   }
 
+  Future<void> _loadCompanyRating(int companyUserId) async {
+    try {
+      final authRepo = sl<AuthRepository>();
+      final session = await authRepo.getUserSession();
+      if (session != null) {
+        final ratingsDs = sl<RatingsRemoteDataSource>();
+        final result = await ratingsDs.getCompanyAverageRatingByUserId(
+          companyUserId: companyUserId,
+          token: session.accessToken,
+        );
+        if (mounted) {
+          setState(() {
+            _companyRating = (result['average'] as num?)?.toDouble();
+            _companyRatingCount = result['count'] ?? 0;
+          });
+        }
+      }
+    } catch (e) {
+      // Ignorar error silenciosamente
+      print('Error cargando calificación de la empresa: $e');
+    }
+  }
+
   @override
   void dispose() {
     _connectionSub?.cancel();
@@ -447,6 +497,7 @@ class _RequestTrackingPageState extends State<RequestTrackingPage> {
     _assignedSub?.cancel();
     _locationSub?.cancel();
     _statusSub?.cancel();
+    _ratingCreatedSub?.cancel();
     _socketService.disconnect();
     _mapController?.dispose();
     super.dispose();
@@ -599,6 +650,67 @@ class _RequestTrackingPageState extends State<RequestTrackingPage> {
                             ),
                           ),
                         ],
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+
+          // Información de la empresa (cuando está asignado)
+          if (_companyRating != null &&
+              _companyRating! > 0 &&
+              _currentStatus != 'SEARCHING') ...[
+            const SizedBox(height: 8),
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: Colors.purple[50],
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: Colors.purple[200]!),
+              ),
+              child: Row(
+                children: [
+                  const CircleAvatar(
+                    backgroundColor: Colors.purple,
+                    radius: 20,
+                    child: Icon(Icons.business, color: Colors.white, size: 20),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text(
+                          'Calificación de la empresa',
+                          style: TextStyle(
+                            fontWeight: FontWeight.bold,
+                            fontSize: 14,
+                          ),
+                        ),
+                        const SizedBox(height: 4),
+                        Row(
+                          children: [
+                            ...List.generate(5, (index) {
+                              return Icon(
+                                index < _companyRating!.round()
+                                    ? Icons.star
+                                    : Icons.star_border,
+                                size: 14,
+                                color: Colors.amber,
+                              );
+                            }),
+                            const SizedBox(width: 6),
+                            Text(
+                              '${_companyRating!.toStringAsFixed(1)} (${_companyRatingCount})',
+                              style: TextStyle(
+                                fontSize: 12,
+                                color: Colors.grey[700],
+                              ),
+                            ),
+                          ],
+                        ),
                       ],
                     ),
                   ),

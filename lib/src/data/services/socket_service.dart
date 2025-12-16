@@ -66,6 +66,8 @@ class SocketService {
       StreamController<Map<String, dynamic>>.broadcast();
   final _requestCanceledController =
       StreamController<RequestUpdate>.broadcast();
+  final _ratingCreatedController =
+      StreamController<Map<String, dynamic>>.broadcast();
 
   // Getters para los streams
   Stream<bool> get connectionStream => _connectionController.stream;
@@ -81,6 +83,8 @@ class SocketService {
       _newServiceRequestController.stream;
   Stream<RequestUpdate> get onRequestCanceled =>
       _requestCanceledController.stream;
+  Stream<Map<String, dynamic>> get onRatingCreated =>
+      _ratingCreatedController.stream;
 
   bool get isConnected => _isConnected;
   bool get isAuthenticated => _isAuthenticated;
@@ -211,6 +215,16 @@ class SocketService {
         print('Error parseando request_canceled: $e');
       }
     });
+
+    // Evento: Nueva calificación creada
+    _socket!.on('rating_created', (data) {
+      print('⭐ Nueva calificación creada: $data');
+      try {
+        _ratingCreatedController.add(data as Map<String, dynamic>);
+      } catch (e) {
+        print('Error parseando rating_created: $e');
+      }
+    });
   }
 
   void _authenticate(String token) {
@@ -260,5 +274,6 @@ class SocketService {
     _newMissionController.close();
     _newServiceRequestController.close();
     _requestCanceledController.close();
+    _ratingCreatedController.close();
   }
 }

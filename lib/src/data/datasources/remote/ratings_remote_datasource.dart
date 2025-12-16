@@ -22,6 +22,13 @@ abstract class RatingsRemoteDataSource {
     required String token,
   });
 
+  Future<Map<String, dynamic>> getCompanyAverageRating({required String token});
+
+  Future<Map<String, dynamic>> getCompanyAverageRatingByUserId({
+    required int companyUserId,
+    required String token,
+  });
+
   Future<List<Map<String, dynamic>>> getMyRatings({required String token});
 }
 
@@ -89,6 +96,45 @@ class RatingsRemoteDataSourceImpl implements RatingsRemoteDataSource {
   }) async {
     final response = await client.get(
       Uri.parse('$apiUrl/ratings/average/$userId'),
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer $token',
+      },
+    );
+
+    if (response.statusCode == 200) {
+      return json.decode(response.body);
+    } else {
+      return {'average': 0, 'count': 0};
+    }
+  }
+
+  @override
+  Future<Map<String, dynamic>> getCompanyAverageRating({
+    required String token,
+  }) async {
+    final response = await client.get(
+      Uri.parse('$apiUrl/ratings/company-average'),
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer $token',
+      },
+    );
+
+    if (response.statusCode == 200) {
+      return json.decode(response.body);
+    } else {
+      return {'average': 0, 'count': 0};
+    }
+  }
+
+  @override
+  Future<Map<String, dynamic>> getCompanyAverageRatingByUserId({
+    required int companyUserId,
+    required String token,
+  }) async {
+    final response = await client.get(
+      Uri.parse('$apiUrl/ratings/company-average/$companyUserId'),
       headers: {
         'Content-Type': 'application/json',
         'Authorization': 'Bearer $token',
