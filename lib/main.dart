@@ -19,10 +19,34 @@ import 'package:medcar_frontend/src/presentation/pages/driver/shifts_history/dri
 import 'package:medcar_frontend/src/presentation/pages/profile/profile_page.dart';
 import 'package:medcar_frontend/src/presentation/pages/roles/role_selection_page.dart';
 import 'package:medcar_frontend/src/presentation/pages/splash/splash_page.dart';
+import 'package:firebase_core/firebase_core.dart';
+import 'package:firebase_messaging/firebase_messaging.dart';
+import 'firebase_options.dart';
+import 'package:medcar_frontend/src/data/services/notification_service.dart';
+
+// Handler para notificaciones en segundo plano (debe ser una función de nivel superior)
+@pragma('vm:entry-point')
+Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
+  await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
+  debugPrint('Notificación recibida en segundo plano: ${message.messageId}');
+  debugPrint('Título: ${message.notification?.title}');
+  debugPrint('Cuerpo: ${message.notification?.body}');
+  debugPrint('Datos: ${message.data}');
+}
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await di.init();
+
+  // Inicializar Firebase
+  await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
+
+  // Configurar el handler de notificaciones en segundo plano
+  FirebaseMessaging.onBackgroundMessage(_firebaseMessagingBackgroundHandler);
+
+  // Inicializar el servicio de notificaciones
+  await NotificationService().initialize();
+
   runApp(const MyApp());
 }
 

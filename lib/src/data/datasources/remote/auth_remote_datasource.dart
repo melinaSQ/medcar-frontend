@@ -24,6 +24,10 @@ abstract class AuthRemoteDataSource {
     required String newPassword,
     required String token,
   });
+  Future<void> updateFcmToken({
+    required String fcmToken,
+    required String token,
+  });
 }
 
 class AuthRemoteDataSourceImpl implements AuthRemoteDataSource {
