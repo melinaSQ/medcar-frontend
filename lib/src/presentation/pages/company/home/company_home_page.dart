@@ -666,6 +666,175 @@ class _CompanyHomeViewState extends State<_CompanyHomeView> {
     );
   }
 
+  // ==================== TAB DASHBOARD ====================
+  Widget _buildDashboardTab(BuildContext context, CompanyHomeState state) {
+    return RefreshIndicator(
+      onRefresh: () async {
+        context.read<CompanyHomeBloc>().add(CompanyHomeInitEvent());
+        if (_ambulances.isEmpty) _loadAmbulances();
+        if (_drivers.isEmpty) _loadDrivers();
+        if (_history.isEmpty) _loadHistory();
+        _loadCompanyRating();
+      },
+      child: SingleChildScrollView(
+        physics: const AlwaysScrollableScrollPhysics(),
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Estadísticas generales
+            _buildSectionTitle('📊 Resumen General', 0),
+            const SizedBox(height: 12),
+            Row(
+              children: [
+                Expanded(
+                  child: _buildStatCard(
+                    'Solicitudes Pendientes',
+                    state.pendingRequests.length.toString(),
+                    Icons.emergency,
+                    Colors.orange,
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: _buildStatCard(
+                    'Turnos Activos',
+                    state.activeShifts.length.toString(),
+                    Icons.local_shipping,
+                    Colors.blue,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            Row(
+              children: [
+                Expanded(
+                  child: _buildStatCard(
+                    'Ambulancias',
+                    _ambulances.length.toString(),
+                    Icons.airport_shuttle,
+                    Colors.green,
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: _buildStatCard(
+                    'Conductores',
+                    _drivers.length.toString(),
+                    Icons.people,
+                    Colors.purple,
+                  ),
+                ),
+              ],
+            ),
+            if (_companyRating != null) ...[
+              const SizedBox(height: 12),
+              _buildStatCard(
+                'Calificación de la Empresa',
+                '${_companyRating!.toStringAsFixed(1)} ⭐',
+                Icons.star,
+                Colors.amber,
+              ),
+            ],
+            const SizedBox(height: 24),
+            // Solicitudes pendientes
+            _buildSectionTitle(
+              '🚨 Solicitudes Pendientes',
+              state.pendingRequests.length,
+            ),
+            const SizedBox(height: 12),
+            if (state.pendingRequests.isEmpty)
+              _buildEmptyCard('No hay solicitudes pendientes')
+            else
+              ...state.pendingRequests
+                  .take(3)
+                  .map(
+                    (request) => _buildRequestCard(
+                      context,
+                      request,
+                      state.activeShifts,
+                      state.status == CompanyHomeStatus.assigning,
+                    ),
+                  ),
+            if (state.pendingRequests.length > 3)
+              Padding(
+                padding: const EdgeInsets.only(top: 8),
+                child: Center(
+                  child: TextButton(
+                    onPressed: () {
+                      setState(() => _currentTabIndex = 1);
+                    },
+                    child: const Text('Ver todas las solicitudes'),
+                  ),
+                ),
+              ),
+            const SizedBox(height: 24),
+            // Turnos activos
+            _buildSectionTitle('🚑 Turnos Activos', state.activeShifts.length),
+            const SizedBox(height: 12),
+            if (state.activeShifts.isEmpty)
+              _buildEmptyCard('No hay turnos activos')
+            else
+              ...state.activeShifts
+                  .take(3)
+                  .map((shift) => _buildShiftCard(shift)),
+            if (state.activeShifts.length > 3)
+              Padding(
+                padding: const EdgeInsets.only(top: 8),
+                child: Center(
+                  child: TextButton(
+                    onPressed: () {
+                      setState(() => _currentTabIndex = 1);
+                    },
+                    child: const Text('Ver todos los turnos'),
+                  ),
+                ),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildStatCard(
+    String title,
+    String value,
+    IconData icon,
+    Color color,
+  ) {
+    return Card(
+      elevation: 2,
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Icon(icon, color: color, size: 24),
+                Text(
+                  value,
+                  style: TextStyle(
+                    fontSize: 24,
+                    fontWeight: FontWeight.bold,
+                    color: color,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            Text(
+              title,
+              style: const TextStyle(fontSize: 12, color: Colors.grey),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   // ==================== TAB EMERGENCIAS ====================
   Widget _buildEmergenciesTab(BuildContext context, CompanyHomeState state) {
     return RefreshIndicator(
