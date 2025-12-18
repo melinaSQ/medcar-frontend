@@ -1,9 +1,12 @@
 // lib/src/data/services/notification_service.dart
 
 import 'dart:async';
+import 'dart:convert';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:flutter/foundation.dart';
+import 'package:medcar_frontend/dependency_injection.dart' as di;
+import '../../domain/repositories/auth_repository.dart';
 
 /// Handler para cuando se recibe una notificación en primer plano
 @pragma('vm:entry-point')
@@ -34,6 +37,9 @@ class NotificationService {
 
   bool _initialized = false;
   String? _fcmToken;
+
+  // Callback para manejar la navegación cuando se toca una notificación
+  Function(RemoteMessage)? onNotificationTapped;
 
   /// Inicializa el servicio de notificaciones
   Future<void> initialize() async {
@@ -95,7 +101,8 @@ class NotificationService {
 
       await _localNotifications
           .resolvePlatformSpecificImplementation<
-              AndroidFlutterLocalNotificationsPlugin>()
+            AndroidFlutterLocalNotificationsPlugin
+          >()
           ?.createNotificationChannel(androidChannel);
     }
   }
@@ -104,19 +111,33 @@ class NotificationService {
   Future<void> _setupFirebaseMessaging() async {
     // Configurar el handler para notificaciones en primer plano
     FirebaseMessaging.onMessage.listen((RemoteMessage message) {
-      debugPrint('Notificación en primer plano recibida');
+      debugPrint('=== NOTIFICACIÓN EN PRIMER PLANO ===');
+      debugPrint('Message ID: ${message.messageId}');
+      debugPrint('Título: ${message.notification?.title}');
+      debugPrint('Cuerpo: ${message.notification?.body}');
+      debugPrint('Datos: ${message.data}');
+      debugPrint('=====================================');
+
+      // Siempre mostrar notificación local en primer plano
       _showLocalNotification(message);
     });
 
     // Configurar el handler para cuando se toca una notificación
     FirebaseMessaging.onMessageOpenedApp.listen((RemoteMessage message) {
-      debugPrint('Notificación tocada: ${message.messageId}');
+      debugPrint('=== NOTIFICACIÓN TOCADA ===');
+      debugPrint('Message ID: ${message.messageId}');
+      debugPrint('Datos: ${message.data}');
+      debugPrint('===========================');
       _handleNotificationTap(message);
     });
 
     // Verificar si la app se abrió desde una notificación
     final initialMessage = await _firebaseMessaging.getInitialMessage();
     if (initialMessage != null) {
+      debugPrint('=== APP ABIERTA DESDE NOTIFICACIÓN ===');
+      debugPrint('Message ID: ${initialMessage.messageId}');
+      debugPrint('Datos: ${initialMessage.data}');
+      debugPrint('======================================');
       _handleNotificationTap(initialMessage);
     }
   }
@@ -159,10 +180,11 @@ class NotificationService {
       debugPrint('FCM Token: $_fcmToken');
 
       // Escuchar cambios en el token
-      _firebaseMessaging.onTokenRefresh.listen((newToken) {
+      _firebaseMessaging.onTokenRefresh.listen((newToken) async {
         _fcmToken = newToken;
         debugPrint('Nuevo FCM Token: $newToken');
-        // Aquí puedes enviar el nuevo token a tu backend
+        // Enviar el nuevo token al backend
+        await _sendTokenToBackend(newToken);
       });
 
       return _fcmToken;
@@ -177,52 +199,108 @@ class NotificationService {
 
   /// Muestra una notificación local
   Future<void> _showLocalNotification(RemoteMessage message) async {
-    final notification = message.notification;
-    if (notification == null) return;
+    // Si tiene notification payload, usarlo
+    String title = message.notification?.title ?? 'MedCar';
+    String body = message.notification?.body ?? '';
 
-    const androidDetails = AndroidNotificationDetails(
+    // Si no tiene notification pero tiene data, intentar extraer título y cuerpo
+    if (title == 'MedCar' && message.data.isNotEmpty) {
+      title =
+          message.data['title'] ?? message.data['type'] ?? 'Nueva notificación';
+      body =
+          message.data['body'] ??
+          message.data['message'] ??
+          'Tienes una nueva notificación';
+    }
+
+    // Si aún no hay cuerpo, usar un mensaje por defecto
+    if (body.isEmpty) {
+      body = 'Tienes una nueva notificación';
+    }
+
+    // Crear payload con los datos de la notificación
+    final payload = jsonEncode({
+      'messageId': message.messageId,
+      'data': message.data,
+      'sentTime': message.sentTime?.toIso8601String(),
+    });
+
+    final androidDetails = AndroidNotificationDetails(
       'medcar_channel',
       'MedCar Notificaciones',
       channelDescription: 'Notificaciones de la aplicación MedCar',
       importance: Importance.high,
       priority: Priority.high,
       showWhen: true,
+      enableVibration: true,
+      playSound: true,
+      styleInformation: BigTextStyleInformation(body),
     );
 
     const iosDetails = DarwinNotificationDetails(
       presentAlert: true,
       presentBadge: true,
       presentSound: true,
+      interruptionLevel: InterruptionLevel.active,
     );
 
-    const details = NotificationDetails(
+    final details = NotificationDetails(
       android: androidDetails,
       iOS: iosDetails,
     );
 
     await _localNotifications.show(
       message.hashCode,
-      notification.title,
-      notification.body,
+      title,
+      body,
       details,
-      payload: message.data.toString(),
+      payload: payload,
     );
+
+    debugPrint('Notificación local mostrada: $title - $body');
   }
 
-  /// Maneja cuando se toca una notificación
+  /// Maneja cuando se toca una notificación local
   void _onNotificationTapped(NotificationResponse response) {
-    debugPrint('Notificación local tocada: ${response.payload}');
-    // Aquí puedes navegar a una pantalla específica según el payload
+    debugPrint('=== NOTIFICACIÓN LOCAL TOCADA ===');
+    debugPrint('Payload: ${response.payload}');
+    debugPrint('Action ID: ${response.actionId}');
+    debugPrint('================================');
+
+    if (response.payload != null && response.payload!.isNotEmpty) {
+      try {
+        final payloadData = jsonDecode(response.payload!);
+        debugPrint('Datos del payload: $payloadData');
+        // Aquí puedes procesar el payload y navegar según sea necesario
+      } catch (e) {
+        debugPrint('Error al parsear payload: $e');
+      }
+    }
   }
 
   /// Maneja cuando se toca una notificación de Firebase
   void _handleNotificationTap(RemoteMessage message) {
-    debugPrint('Manejando tap de notificación: ${message.data}');
-    // Aquí puedes navegar a una pantalla específica según los datos
-    // Por ejemplo:
-    // if (message.data['type'] == 'service_request') {
-    //   Navigator.pushNamed(context, '/client/tracking', arguments: {...});
-    // }
+    debugPrint('=== MANEJANDO TAP DE NOTIFICACIÓN ===');
+    debugPrint('Message ID: ${message.messageId}');
+    debugPrint('Tipo: ${message.data['type']}');
+    debugPrint('Datos completos: ${message.data}');
+    debugPrint('====================================');
+
+    // Llamar al callback si está configurado
+    if (onNotificationTapped != null) {
+      onNotificationTapped!(message);
+    }
+
+    // Procesar según el tipo de notificación
+    final notificationType = message.data['type'];
+    if (notificationType != null) {
+      debugPrint('Tipo de notificación: $notificationType');
+      // Aquí puedes agregar lógica específica según el tipo
+      // Por ejemplo:
+      // - 'service_request' -> navegar a tracking
+      // - 'ambulance_assigned' -> navegar a tracking
+      // - 'request_status_update' -> actualizar estado
+    }
   }
 
   /// Suscribe a un tema
@@ -272,5 +350,16 @@ class NotificationService {
     );
 
     await _localNotifications.show(id, title, body, details, payload: payload);
+  }
+
+  /// Envía el token FCM al backend
+  Future<void> _sendTokenToBackend(String token) async {
+    try {
+      final authRepository = di.sl<AuthRepository>();
+      await authRepository.updateFcmToken(token);
+      debugPrint('Token FCM actualizado en el backend: $token');
+    } catch (e) {
+      debugPrint('Error al enviar token FCM al backend: $e');
+    }
   }
 }

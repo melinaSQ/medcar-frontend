@@ -24,4 +24,7 @@ abstract class AuthRepository {
     required String currentPassword,
     required String newPassword,
   });
+
+  // Actualizar token FCM
+  Future<void> updateFcmToken(String fcmToken);
 }

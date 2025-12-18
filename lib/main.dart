@@ -24,14 +24,24 @@ import 'package:firebase_messaging/firebase_messaging.dart';
 import 'firebase_options.dart';
 import 'package:medcar_frontend/src/data/services/notification_service.dart';
 
+// NavigatorKey global para navegación desde notificaciones
+final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
+
 // Handler para notificaciones en segundo plano (debe ser una función de nivel superior)
 @pragma('vm:entry-point')
 Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
   await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
-  debugPrint('Notificación recibida en segundo plano: ${message.messageId}');
+
+  debugPrint('=== NOTIFICACIÓN EN SEGUNDO PLANO ===');
+  debugPrint('Message ID: ${message.messageId}');
   debugPrint('Título: ${message.notification?.title}');
   debugPrint('Cuerpo: ${message.notification?.body}');
   debugPrint('Datos: ${message.data}');
+  debugPrint('Sent Time: ${message.sentTime}');
+  debugPrint('=====================================');
+
+  // Nota: En segundo plano, las notificaciones se muestran automáticamente
+  // por el sistema operativo, pero podemos procesar los datos aquí si es necesario
 }
 
 void main() async {
@@ -45,7 +55,11 @@ void main() async {
   FirebaseMessaging.onBackgroundMessage(_firebaseMessagingBackgroundHandler);
 
   // Inicializar el servicio de notificaciones
-  await NotificationService().initialize();
+  final notificationService = NotificationService();
+  await notificationService.initialize();
+
+  // Configurar el callback de navegación
+  notificationService.onNotificationTapped = _handleNotificationNavigation;
 
   runApp(const MyApp());
 }
@@ -58,6 +72,7 @@ class MyApp extends StatelessWidget {
     return MultiBlocProvider(
       providers: blocProviders,
       child: MaterialApp(
+        navigatorKey: navigatorKey,
         debugShowCheckedModeBanner: false,
         title: 'MedCar App',
         initialRoute: 'splash',
@@ -104,5 +119,143 @@ class MyApp extends StatelessWidget {
         },
       ),
     );
+  }
+}
+
+/// Maneja la navegación cuando se toca una notificación
+void _handleNotificationNavigation(RemoteMessage message) {
+  final data = message.data;
+  final type = data['type'] as String?;
+
+  debugPrint('=== NAVEGANDO DESDE NOTIFICACIÓN ===');
+  debugPrint('Tipo: $type');
+  debugPrint('Datos: $data');
+  debugPrint('====================================');
+
+  if (type == null) {
+    debugPrint('No se especificó tipo de notificación');
+    return;
+  }
+
+  final navigator = navigatorKey.currentState;
+  if (navigator == null) {
+    debugPrint('Navigator no disponible aún');
+    return;
+  }
+
+  switch (type) {
+    case 'service_request':
+    case 'new_request':
+      // Nueva solicitud de emergencia (para empresa/conductor)
+      // Navegar a la pantalla de home de empresa o conductor
+      final role = data['role'] as String?;
+      if (role == 'company' || role == 'admin') {
+        navigator.pushNamedAndRemoveUntil('company/home', (route) => false);
+      } else if (role == 'driver') {
+        navigator.pushNamedAndRemoveUntil('driver/home', (route) => false);
+      }
+      break;
+
+    case 'ambulance_assigned':
+    case 'request_assigned':
+      // Ambulancia asignada (para cliente)
+      // Navegar a la pantalla de tracking
+      final requestId = data['requestId'] as String?;
+      final userLat = data['userLat'] != null
+          ? double.tryParse(data['userLat'].toString())
+          : null;
+      final userLng = data['userLng'] != null
+          ? double.tryParse(data['userLng'].toString())
+          : null;
+
+      if (requestId != null && userLat != null && userLng != null) {
+        navigator.pushNamed(
+          'client/tracking',
+          arguments: {
+            'requestId': requestId,
+            'userLat': userLat,
+            'userLng': userLng,
+          },
+        );
+      } else {
+        navigator.pushNamedAndRemoveUntil('client/home', (route) => false);
+      }
+      break;
+
+    case 'request_status_update':
+    case 'status_update':
+      // Actualización de estado (para cliente/conductor)
+      final requestId = data['requestId'] as String?;
+      // final status = data['status'] as String?; // Puede usarse para lógica futura
+      final role = data['role'] as String?;
+
+      if (role == 'client' && requestId != null) {
+        // Si es cliente y hay requestId, ir a tracking
+        final userLat = data['userLat'] != null
+            ? double.tryParse(data['userLat'].toString())
+            : null;
+        final userLng = data['userLng'] != null
+            ? double.tryParse(data['userLng'].toString())
+            : null;
+
+        if (userLat != null && userLng != null) {
+          navigator.pushNamed(
+            'client/tracking',
+            arguments: {
+              'requestId': requestId,
+              'userLat': userLat,
+              'userLng': userLng,
+            },
+          );
+        } else {
+          navigator.pushNamedAndRemoveUntil('client/home', (route) => false);
+        }
+      } else if (role == 'driver') {
+        navigator.pushNamedAndRemoveUntil('driver/home', (route) => false);
+      }
+      break;
+
+    case 'service_completed':
+    case 'request_completed':
+      // Servicio completado (para cliente - mostrar pantalla de calificación)
+      final serviceRequestId = data['serviceRequestId'] as String?;
+      final driverName = data['driverName'] as String?;
+      final ambulancePlate = data['ambulancePlate'] as String?;
+
+      if (serviceRequestId != null &&
+          driverName != null &&
+          ambulancePlate != null) {
+        navigator.pushNamed(
+          'client/rating',
+          arguments: {
+            'serviceRequestId': serviceRequestId,
+            'driverName': driverName,
+            'ambulancePlate': ambulancePlate,
+          },
+        );
+      } else {
+        navigator.pushNamedAndRemoveUntil('client/home', (route) => false);
+      }
+      break;
+
+    case 'shift_started':
+    case 'shift_ended':
+      // Turno iniciado/finalizado (para conductor)
+      navigator.pushNamedAndRemoveUntil('driver/home', (route) => false);
+      break;
+
+    case 'message':
+    case 'general':
+    default:
+      // Notificación general - ir a home según el rol
+      final role = data['role'] as String?;
+      if (role == 'client') {
+        navigator.pushNamedAndRemoveUntil('client/home', (route) => false);
+      } else if (role == 'company' || role == 'admin') {
+        navigator.pushNamedAndRemoveUntil('company/home', (route) => false);
+      } else if (role == 'driver') {
+        navigator.pushNamedAndRemoveUntil('driver/home', (route) => false);
+      }
+      break;
   }
 }

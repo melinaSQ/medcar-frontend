@@ -1,13 +1,15 @@
 // lib/src/data/datasources/remote/auth_remote_datasource.dart
 
 import 'dart:convert';
+import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'package:medcar_frontend/src/data/models/auth_response_model.dart';
 
 // Define la URL base de tu API
 // Para emulador Android usa: http://10.0.2.2:3000
+//const String apiUrl = 'http://10.0.2.2:3000';
 // Para dispositivo físico usa tu IP local: http://192.168.x.x:3000
-const String apiUrl = 'http://10.0.2.2:3000';
+const String apiUrl = 'http://192.168.1.5:3000';
 
 abstract class AuthRemoteDataSource {
   Future<AuthResponseModel> login(String email, String password);
@@ -120,6 +122,27 @@ class AuthRemoteDataSourceImpl implements AuthRemoteDataSource {
     if (response.statusCode != 200) {
       final errorBody = json.decode(response.body);
       throw Exception(errorBody['message'] ?? 'Error al cambiar contraseña');
+    }
+  }
+
+  @override
+  Future<void> updateFcmToken({
+    required String fcmToken,
+    required String token,
+  }) async {
+    final response = await client.post(
+      Uri.parse('$apiUrl/users/fcm-token'),
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer $token',
+      },
+      body: json.encode({'fcmToken': fcmToken}),
+    );
+
+    if (response.statusCode != 200 && response.statusCode != 201) {
+      // No lanzamos excepción para que no afecte el flujo de login
+      // Solo logueamos el error
+      debugPrint('Error al actualizar token FCM: ${response.body}');
     }
   }
 }

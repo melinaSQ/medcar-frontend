@@ -1,11 +1,13 @@
 // lib/src/data/repositories/auth_repository_impl.dart
 
 import 'dart:convert';
+import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../../domain/entities/auth_response_entity.dart';
 import '../../domain/repositories/auth_repository.dart';
 import '../datasources/remote/auth_remote_datasource.dart';
 import '../models/user_model.dart';
+import '../services/notification_service.dart';
 
 const String _sessionKey = 'user_session';
 
@@ -19,6 +21,10 @@ class AuthRepositoryImpl implements AuthRepository {
     try {
       final authResponse = await remoteDataSource.login(email, password);
       await saveUserSession(authResponse);
+
+      // Enviar token FCM al backend después del login exitoso
+      await _sendFcmTokenIfAvailable();
+
       return authResponse;
     } catch (e) {
       rethrow;
@@ -30,6 +36,10 @@ class AuthRepositoryImpl implements AuthRepository {
     try {
       final authResponse = await remoteDataSource.register(userData);
       await saveUserSession(authResponse);
+
+      // Enviar token FCM al backend después del registro exitoso
+      await _sendFcmTokenIfAvailable();
+
       return authResponse;
     } catch (e) {
       rethrow;
@@ -119,6 +129,41 @@ class AuthRepositoryImpl implements AuthRepository {
       );
     } catch (e) {
       rethrow;
+    }
+  }
+
+  @override
+  Future<void> updateFcmToken(String fcmToken) async {
+    try {
+      // Obtener el token de la sesión actual
+      final currentSession = await getUserSession();
+      if (currentSession == null) {
+        // Si no hay sesión, no podemos enviar el token
+        return;
+      }
+
+      // Enviar el token FCM al backend
+      await remoteDataSource.updateFcmToken(
+        fcmToken: fcmToken,
+        token: currentSession.accessToken,
+      );
+    } catch (e) {
+      // No lanzamos excepción para que no afecte otros flujos
+      debugPrint('Error al actualizar token FCM: $e');
+    }
+  }
+
+  /// Envía el token FCM al backend si está disponible
+  Future<void> _sendFcmTokenIfAvailable() async {
+    try {
+      final notificationService = NotificationService();
+      final fcmToken = notificationService.fcmToken;
+      if (fcmToken != null && fcmToken.isNotEmpty) {
+        await updateFcmToken(fcmToken);
+        debugPrint('Token FCM enviado al backend: $fcmToken');
+      }
+    } catch (e) {
+      debugPrint('Error al obtener/enviar token FCM: $e');
     }
   }
 }
