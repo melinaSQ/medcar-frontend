@@ -56,6 +56,24 @@ class AuthRepositoryImpl implements AuthRepository {
   }
 
   @override
+  Future<void> refreshUserSession() async {
+    final currentSession = await getUserSession();
+    if (currentSession == null) {
+      throw Exception('No hay sesión activa');
+    }
+    final json = await remoteDataSource.getCurrentUser(
+      token: currentSession.accessToken,
+    );
+    final user = UserModel.fromJson(json);
+    await saveUserSession(
+      AuthResponseEntity(
+        user: user,
+        accessToken: currentSession.accessToken,
+      ),
+    );
+  }
+
+  @override
   Future<AuthResponseEntity?> getUserSession() async {
     final prefs = await SharedPreferences.getInstance();
     final sessionJson = prefs.getString(_sessionKey);
@@ -75,7 +93,7 @@ class AuthRepositoryImpl implements AuthRepository {
   Future<AuthResponseEntity> updateProfile({
     required String name,
     required String lastname,
-    required String phone,
+    String? phone,
     String? imageUrl,
   }) async {
     try {
@@ -151,6 +169,23 @@ class AuthRepositoryImpl implements AuthRepository {
       // No lanzamos excepción para que no afecte otros flujos
       debugPrint('Error al actualizar token FCM: $e');
     }
+  }
+
+  @override
+  Future<void> requestContactChange({
+    String? email,
+    String? phone,
+  }) async {
+    final currentSession = await getUserSession();
+    if (currentSession == null) {
+      throw Exception('No hay sesión activa');
+    }
+
+    await remoteDataSource.requestContactChange(
+      email: email,
+      phone: phone,
+      token: currentSession.accessToken,
+    );
   }
 
   /// Envía el token FCM al backend si está disponible

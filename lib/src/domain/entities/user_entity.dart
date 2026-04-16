@@ -7,6 +7,9 @@ class UserEntity {
   final String email;
   final String phone;
   final List<String> roles;
+  /// Solicitud de cambio pendiente (solo informativo en la app).
+  final String? pendingEmail;
+  final String? pendingPhone;
 
   UserEntity({
     required this.id,
@@ -15,6 +18,8 @@ class UserEntity {
     required this.email,
     required this.phone,
     required this.roles,
+    this.pendingEmail,
+    this.pendingPhone,
   });
 
   Map<String, dynamic> toJson() => {
@@ -24,6 +29,8 @@ class UserEntity {
     'email': email,
     'phone': phone,
     'roles': roles,
+    if (pendingEmail != null) 'pendingEmail': pendingEmail,
+    if (pendingPhone != null) 'pendingPhone': pendingPhone,
   };
 
   factory UserEntity.fromJson(Map<String, dynamic> json) => UserEntity(
@@ -33,5 +40,7 @@ class UserEntity {
     email: json['email'],
     phone: json['phone'],
     roles: List<String>.from(json['roles']),
+    pendingEmail: json['pendingEmail']?.toString(),
+    pendingPhone: json['pendingPhone']?.toString(),
   );
 }

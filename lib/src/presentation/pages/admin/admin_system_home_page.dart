@@ -81,7 +81,7 @@ class _AdminSystemHomePageState extends State<AdminSystemHomePage> {
                 ),
                 const SizedBox(height: 8),
                 const Text(
-                  'Gestiona empresas, usuarios y auditoría global.',
+                  'Gestiona empresas, usuarios, cambios críticos y auditoría.',
                   style: TextStyle(color: Colors.white70, fontSize: 14),
                 ),
                 const SizedBox(height: 28),
@@ -106,6 +106,16 @@ class _AdminSystemHomePageState extends State<AdminSystemHomePage> {
                         subtitle: 'Listado y acciones',
                         color: const Color(0xFF2E7D32),
                         onTap: () => Navigator.pushNamed(context, 'admin/users'),
+                      ),
+                      _tile(
+                        icon: Icons.verified_user,
+                        title: 'Cambio de contacto',
+                        subtitle: 'Aprobar o rechazar',
+                        color: const Color(0xFF00695C),
+                        onTap: () => Navigator.pushNamed(
+                          context,
+                          'admin/contact-change-requests',
+                        ),
                       ),
                       _tile(
                         icon: Icons.history_edu,
@@ -165,15 +175,19 @@ class _AdminSystemHomePageState extends State<AdminSystemHomePage> {
               Text(
                 title,
                 style: TextStyle(
-                  fontSize: 16,
+                  fontSize: 14,
                   fontWeight: FontWeight.bold,
                   color: color,
                 ),
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
               ),
               const SizedBox(height: 4),
               Text(
                 subtitle,
-                style: TextStyle(fontSize: 12, color: Colors.grey[600]),
+                style: TextStyle(fontSize: 11, color: Colors.grey[600]),
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
               ),
             ],
           ),

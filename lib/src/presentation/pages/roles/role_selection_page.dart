@@ -190,7 +190,11 @@ class _RoleSelectionPageState extends State<RoleSelectionPage> {
                         ),
                       
                       // Mostrar opción de super admin si tiene el rol
-                      if (_userRoles.contains('ADMIN'))
+                      if (_userRoles.any(
+                        (r) =>
+                            r.toUpperCase() == 'ADMIN' ||
+                            r.toUpperCase() == 'SYSTEM_ADMIN',
+                      ))
                         _buildRoleCard(
                           icon: Icons.admin_panel_settings,
                           title: 'Administrador',

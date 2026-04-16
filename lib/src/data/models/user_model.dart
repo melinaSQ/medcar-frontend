@@ -13,6 +13,8 @@ class UserModel extends UserEntity {
     required super.email,
     required super.phone,
     required super.roles,
+    super.pendingEmail,
+    super.pendingPhone,
   });
 
   // Factory constructor para crear una instancia desde un JSON
@@ -26,6 +28,8 @@ class UserModel extends UserEntity {
       roles: json["roles"] != null 
           ? List<String>.from(json["roles"].map((x) => x.toString()))
           : [],
+      pendingEmail: json["pendingEmail"]?.toString(),
+      pendingPhone: json["pendingPhone"]?.toString(),
     );
   }
 
@@ -37,5 +41,7 @@ class UserModel extends UserEntity {
     "email": email,
     "phone": phone,
     "roles": roles,
+    if (pendingEmail != null) "pendingEmail": pendingEmail,
+    if (pendingPhone != null) "pendingPhone": pendingPhone,
   };
 }

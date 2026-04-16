@@ -27,8 +27,15 @@ class _SplashPageState extends State<SplashPage> {
       if (!mounted) return;
       
       if (session != null) {
-        // Usuario tiene sesión activa, ir a selección de roles
-        Navigator.pushReplacementNamed(context, 'roles');
+        final roles = session.user.roles;
+        final r0 =
+            roles.isEmpty ? '' : roles.first.toUpperCase();
+        final onlySystemAdmin = roles.length == 1 &&
+            (r0 == 'ADMIN' || r0 == 'SYSTEM_ADMIN');
+        Navigator.pushReplacementNamed(
+          context,
+          onlySystemAdmin ? 'admin/home' : 'roles',
+        );
       } else {
         // No hay sesión, ir a login
         Navigator.pushReplacementNamed(context, 'login');

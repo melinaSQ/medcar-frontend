@@ -24,13 +24,14 @@ import 'package:medcar_frontend/src/presentation/pages/admin/admin_companies_pag
 import 'package:medcar_frontend/src/presentation/pages/admin/admin_users_page.dart';
 import 'package:medcar_frontend/src/presentation/pages/admin/admin_global_history_page.dart';
 import 'package:medcar_frontend/src/presentation/pages/admin/admin_user_history_page.dart';
+import 'package:medcar_frontend/src/presentation/pages/admin/admin_contact_change_requests_page.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
+import 'package:intl/date_symbol_data_local.dart';
 import 'firebase_options.dart';
 import 'package:medcar_frontend/src/data/services/notification_service.dart';
-
-// NavigatorKey global para navegación desde notificaciones
-final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
+import 'package:medcar_frontend/navigation/app_navigator.dart';
+import 'package:medcar_frontend/navigation/route_observer.dart';
 
 // Handler para notificaciones en segundo plano (debe ser una función de nivel superior)
 @pragma('vm:entry-point')
@@ -51,6 +52,7 @@ Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  await initializeDateFormatting();
   await di.init();
 
   // Inicializar Firebase
@@ -77,7 +79,8 @@ class MyApp extends StatelessWidget {
     return MultiBlocProvider(
       providers: blocProviders,
       child: MaterialApp(
-        navigatorKey: navigatorKey,
+        navigatorKey: appNavigatorKey,
+        navigatorObservers: [appRouteObserver],
         debugShowCheckedModeBanner: false,
         title: 'MedCar App',
         initialRoute: 'splash',
@@ -100,6 +103,8 @@ class MyApp extends StatelessWidget {
           'admin/companies': (BuildContext context) =>
               const AdminCompaniesPage(),
           'admin/users': (BuildContext context) => const AdminUsersPage(),
+          'admin/contact-change-requests': (BuildContext context) =>
+              const AdminContactChangeRequestsPage(),
           'admin/global-history': (BuildContext context) =>
               const AdminGlobalHistoryPage(),
         },
@@ -160,7 +165,7 @@ void _handleNotificationNavigation(RemoteMessage message) {
     return;
   }
 
-  final navigator = navigatorKey.currentState;
+  final navigator = appNavigatorKey.currentState;
   if (navigator == null) {
     debugPrint('Navigator no disponible aún');
     return;

@@ -9,15 +9,16 @@ import 'package:medcar_frontend/src/data/models/auth_response_model.dart';
 // Para emulador Android usa: http://10.0.2.2:3000
 //const String apiUrl = 'http://10.0.2.2:3000';
 // Para dispositivo físico usa tu IP local: http://192.168.x.x:3000
-const String apiUrl = 'http://192.168.1.5:3000';
+const String apiUrl = 'http://192.168.1.18:3000';
 
 abstract class AuthRemoteDataSource {
   Future<AuthResponseModel> login(String email, String password);
   Future<AuthResponseModel> register(Map<String, dynamic> userData);
+  Future<Map<String, dynamic>> getCurrentUser({required String token});
   Future<Map<String, dynamic>> updateProfile({
     required String name,
     required String lastname,
-    required String phone,
+    String? phone,
     String? imageUrl,
     required String token,
   });
@@ -28,6 +29,11 @@ abstract class AuthRemoteDataSource {
   });
   Future<void> updateFcmToken({
     required String fcmToken,
+    required String token,
+  });
+  Future<void> requestContactChange({
+    String? email,
+    String? phone,
     required String token,
   });
 }
@@ -47,9 +53,24 @@ class AuthRemoteDataSourceImpl implements AuthRemoteDataSource {
 
     if (response.statusCode == 201 || response.statusCode == 200) {
       return AuthResponseModel.fromJson(json.decode(response.body));
-    } else {
-      throw Exception('Failed to login: ${response.body}');
     }
+    throw Exception(_extractErrorMessage(response));
+  }
+
+  @override
+  Future<Map<String, dynamic>> getCurrentUser({required String token}) async {
+    final response = await client.get(
+      Uri.parse('$apiUrl/users/me'),
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer $token',
+      },
+    );
+
+    if (response.statusCode == 200) {
+      return json.decode(response.body) as Map<String, dynamic>;
+    }
+    throw Exception(_extractErrorMessage(response));
   }
 
   @override
@@ -71,15 +92,17 @@ class AuthRemoteDataSourceImpl implements AuthRemoteDataSource {
   Future<Map<String, dynamic>> updateProfile({
     required String name,
     required String lastname,
-    required String phone,
+    String? phone,
     String? imageUrl,
     required String token,
   }) async {
     final body = <String, dynamic>{
       'name': name,
       'lastname': lastname,
-      'phone': phone,
     };
+    if (phone != null && phone.isNotEmpty) {
+      body['phone'] = phone;
+    }
     if (imageUrl != null && imageUrl.isNotEmpty) {
       body['imageUrl'] = imageUrl;
     }
@@ -144,5 +167,51 @@ class AuthRemoteDataSourceImpl implements AuthRemoteDataSource {
       // Solo logueamos el error
       debugPrint('Error al actualizar token FCM: ${response.body}');
     }
+  }
+
+  @override
+  Future<void> requestContactChange({
+    String? email,
+    String? phone,
+    required String token,
+  }) async {
+    final body = <String, dynamic>{};
+    if (email != null && email.trim().isNotEmpty) {
+      body['email'] = email.trim();
+    }
+    if (phone != null && phone.trim().isNotEmpty) {
+      body['phone'] = phone.trim();
+    }
+
+    if (body.isEmpty) {
+      throw Exception('Debes proporcionar correo o celular');
+    }
+
+    final response = await client.patch(
+      Uri.parse('$apiUrl/users/me/request-contact-change'),
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer $token',
+      },
+      body: json.encode(body),
+    );
+
+    if (response.statusCode != 200 && response.statusCode != 201) {
+      throw Exception(_extractErrorMessage(response));
+    }
+  }
+
+  String _extractErrorMessage(http.Response response) {
+    try {
+      final decoded = json.decode(response.body);
+      if (decoded is Map && decoded['message'] != null) {
+        final message = decoded['message'];
+        if (message is List && message.isNotEmpty) {
+          return message.first.toString();
+        }
+        return message.toString();
+      }
+    } catch (_) {}
+    return 'Error ${response.statusCode}: ${response.body}';
   }
 }

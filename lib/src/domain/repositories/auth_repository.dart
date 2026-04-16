@@ -9,13 +9,15 @@ abstract class AuthRepository {
   // Métodos para manejar la sesión localmente
   Future<void> saveUserSession(AuthResponseEntity authResponse);
   Future<AuthResponseEntity?> getUserSession();
+  /// Actualiza el usuario en sesión desde el servidor (mismo token).
+  Future<void> refreshUserSession();
   Future<void> logout();
 
   // Actualizar perfil
   Future<AuthResponseEntity> updateProfile({
     required String name,
     required String lastname,
-    required String phone,
+    String? phone,
     String? imageUrl,
   });
 
@@ -27,4 +29,10 @@ abstract class AuthRepository {
 
   // Actualizar token FCM
   Future<void> updateFcmToken(String fcmToken);
+
+  // Solicitar cambio de datos críticos (requiere aprobación ADMIN)
+  Future<void> requestContactChange({
+    String? email,
+    String? phone,
+  });
 }

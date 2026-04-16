@@ -1,5 +1,6 @@
 import 'package:get_it/get_it.dart';
 import 'package:http/http.dart' as http;
+import 'package:medcar_frontend/src/data/http/auth_aware_http_client.dart';
 import 'package:medcar_frontend/src/data/datasources/remote/admin_system_remote_datasource.dart';
 import 'package:medcar_frontend/src/data/datasources/remote/ambulances_remote_datasource.dart';
 import 'package:medcar_frontend/src/data/datasources/remote/auth_remote_datasource.dart';
@@ -23,7 +24,9 @@ final sl = GetIt.instance;
 
 Future<void> init() async {
   // === EXTERNALS (sin dependencias) ===
-  sl.registerLazySingleton(() => http.Client());
+  sl.registerLazySingleton<http.Client>(
+    () => AuthAwareHttpClient(http.Client()),
+  );
 
   // === DATA SOURCES (dependen de Externals) ===
   sl.registerLazySingleton<AuthRemoteDataSource>(

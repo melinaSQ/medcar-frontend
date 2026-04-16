@@ -6,6 +6,7 @@
 // - PATCH  /companies/:id/reject       → rechazar
 // - GET    /admin/users?q=             → todos los usuarios (búsqueda opcional)
 // - PATCH  /admin/users/:id/block      → bloquear
+// - PATCH  /admin/users/:id/unblock    → desbloquear
 // - DELETE /admin/users/:id            → eliminar
 // - GET    /admin/users/:id/service-requests → historial de solicitudes del usuario
 // - GET    /admin/service-requests     → historial global (auditoría)
@@ -52,7 +53,27 @@ abstract class AdminSystemRemoteDataSource {
     required String token,
   });
 
+  Future<void> unblockUser({
+    required int userId,
+    required String token,
+  });
+
   Future<void> deleteUser({
+    required int userId,
+    required String token,
+  });
+
+  Future<List<Map<String, dynamic>>> getPendingContactChangeRequests({
+    required String token,
+    String? searchQuery,
+  });
+
+  Future<void> approveContactChange({
+    required int userId,
+    required String token,
+  });
+
+  Future<void> rejectContactChange({
     required int userId,
     required String token,
   });
@@ -158,12 +179,75 @@ class AdminSystemRemoteDataSourceImpl implements AdminSystemRemoteDataSource {
   }
 
   @override
+  Future<void> unblockUser({
+    required int userId,
+    required String token,
+  }) async {
+    final response = await client.patch(
+      Uri.parse('$apiUrl/admin/users/$userId/unblock'),
+      headers: _headers(token),
+    );
+
+    if (response.statusCode != 200 && response.statusCode != 204) {
+      throw Exception(_errorMessage(response));
+    }
+  }
+
+  @override
   Future<void> deleteUser({
     required int userId,
     required String token,
   }) async {
     final response = await client.delete(
       Uri.parse('$apiUrl/admin/users/$userId'),
+      headers: _headers(token),
+    );
+
+    if (response.statusCode != 200 && response.statusCode != 204) {
+      throw Exception(_errorMessage(response));
+    }
+  }
+
+  @override
+  Future<List<Map<String, dynamic>>> getPendingContactChangeRequests({
+    required String token,
+    String? searchQuery,
+  }) async {
+    final q = searchQuery?.trim();
+    final uri = Uri.parse('$apiUrl/admin/users/contact-change-requests').replace(
+      queryParameters: (q != null && q.isNotEmpty) ? {'q': q} : null,
+    );
+
+    final response = await client.get(uri, headers: _headers(token));
+    if (response.statusCode == 200) {
+      final decoded = json.decode(response.body);
+      return _decodeListMap(decoded);
+    }
+    throw Exception(_errorMessage(response));
+  }
+
+  @override
+  Future<void> approveContactChange({
+    required int userId,
+    required String token,
+  }) async {
+    final response = await client.patch(
+      Uri.parse('$apiUrl/admin/users/$userId/contact-change/approve'),
+      headers: _headers(token),
+    );
+
+    if (response.statusCode != 200 && response.statusCode != 204) {
+      throw Exception(_errorMessage(response));
+    }
+  }
+
+  @override
+  Future<void> rejectContactChange({
+    required int userId,
+    required String token,
+  }) async {
+    final response = await client.patch(
+      Uri.parse('$apiUrl/admin/users/$userId/contact-change/reject'),
       headers: _headers(token),
     );
 

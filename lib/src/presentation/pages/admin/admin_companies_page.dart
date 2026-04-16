@@ -1,8 +1,11 @@
 // ignore_for_file: deprecated_member_use
 
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:medcar_frontend/dependency_injection.dart';
 import 'package:medcar_frontend/src/data/datasources/remote/admin_system_remote_datasource.dart';
+import 'package:medcar_frontend/src/data/services/socket_service.dart';
 import 'package:medcar_frontend/src/domain/repositories/auth_repository.dart';
 
 class AdminCompaniesPage extends StatefulWidget {
@@ -13,6 +16,9 @@ class AdminCompaniesPage extends StatefulWidget {
 }
 
 class _AdminCompaniesPageState extends State<AdminCompaniesPage> {
+  final SocketService _socket = SocketService();
+  StreamSubscription<void>? _adminRealtimeSub;
+
   List<Map<String, dynamic>> _items = [];
   bool _loading = true;
   String? _error;
@@ -21,6 +27,28 @@ class _AdminCompaniesPageState extends State<AdminCompaniesPage> {
   void initState() {
     super.initState();
     _load();
+    _listenAdminRealtime();
+  }
+
+  Future<void> _listenAdminRealtime() async {
+    final session = await sl<AuthRepository>().getUserSession();
+    if (!mounted || session == null) return;
+    final isAdmin = session.user.roles.any((r) {
+      final u = r.toUpperCase();
+      return u == 'ADMIN' || u == 'SYSTEM_ADMIN';
+    });
+    if (!isAdmin) return;
+    _socket.connect(session.accessToken);
+    _adminRealtimeSub = _socket.adminQueuesUpdated.listen((_) {
+      if (mounted) _load();
+    });
+  }
+
+  @override
+  void dispose() {
+    _adminRealtimeSub?.cancel();
+    _socket.disconnect();
+    super.dispose();
   }
 
   Future<void> _load() async {

@@ -24,6 +24,33 @@ class _LoginPageState extends State<LoginPage> {
     });
   }
 
+  void _showLoginFailureDialog(String? rawMessage) {
+    final text = (rawMessage ?? 'Error al iniciar sesión')
+        .replaceAll('Exception: ', '')
+        .trim();
+    showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (dialogContext) => AlertDialog(
+        icon: const Icon(Icons.error_outline, color: Colors.red, size: 40),
+        title: const Text('No se pudo iniciar sesión'),
+        content: SingleChildScrollView(
+          child: Text(
+            text.isEmpty ? 'Vuelve a intentar o contacta al administrador.' : text,
+          ),
+        ),
+        actions: [
+          FilledButton(
+            onPressed: () {
+              Navigator.pop(dialogContext);
+              context.read<LoginBloc>().add(ResetFormStatus());
+            },
+            child: const Text('Entendido'),
+          ),
+        ],
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -31,21 +58,19 @@ class _LoginPageState extends State<LoginPage> {
       body: BlocListener<LoginBloc, LoginState>(
         listener: (context, state) {
           if (state.formStatus == FormStatus.success) {
+            final roles = List<String>.from(state.userRoles);
             context.read<LoginBloc>().add(ResetFormStatus());
-            // Ir a selección de roles
+            // Solo administrador del sistema: ir directo al panel (sin menú de roles)
+            final r0 = roles.isEmpty ? '' : roles.first.toUpperCase();
+            final onlySystemAdmin = roles.length == 1 &&
+                (r0 == 'ADMIN' || r0 == 'SYSTEM_ADMIN');
             Navigator.pushNamedAndRemoveUntil(
-              context, 
-              'roles', 
+              context,
+              onlySystemAdmin ? 'admin/home' : 'roles',
               (route) => false,
             );
           } else if (state.formStatus == FormStatus.failure) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(
-                content: Text(state.errorMessage ?? 'Error al iniciar sesión'),
-                backgroundColor: Colors.red,
-              ),
-            );
-            context.read<LoginBloc>().add(ResetFormStatus());
+            _showLoginFailureDialog(state.errorMessage);
           }
         },
         child: BlocBuilder<LoginBloc, LoginState>(

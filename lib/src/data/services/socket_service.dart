@@ -68,6 +68,8 @@ class SocketService {
       StreamController<RequestUpdate>.broadcast();
   final _ratingCreatedController =
       StreamController<Map<String, dynamic>>.broadcast();
+  final _adminQueuesController = StreamController<void>.broadcast();
+  final _userProfileUpdatedController = StreamController<void>.broadcast();
 
   // Getters para los streams
   Stream<bool> get connectionStream => _connectionController.stream;
@@ -85,6 +87,11 @@ class SocketService {
       _requestCanceledController.stream;
   Stream<Map<String, dynamic>> get onRatingCreated =>
       _ratingCreatedController.stream;
+  /// Colas del administrador del sistema (empresas / cambios de contacto).
+  Stream<void> get adminQueuesUpdated => _adminQueuesController.stream;
+
+  /// Perfil del usuario autenticado actualizado en servidor (contacto, etc.).
+  Stream<void> get userProfileUpdated => _userProfileUpdatedController.stream;
 
   bool get isConnected => _isConnected;
   bool get isAuthenticated => _isAuthenticated;
@@ -225,6 +232,20 @@ class SocketService {
         print('Error parseando rating_created: $e');
       }
     });
+
+    _socket!.on('admin_queues_updated', (data) {
+      print('🛡️ Actualización colas admin: $data');
+      if (!_adminQueuesController.isClosed) {
+        _adminQueuesController.add(null);
+      }
+    });
+
+    _socket!.on('user_profile_updated', (data) {
+      print('👤 Perfil actualizado vía socket: $data');
+      if (!_userProfileUpdatedController.isClosed) {
+        _userProfileUpdatedController.add(null);
+      }
+    });
   }
 
   void _authenticate(String token) {
@@ -275,5 +296,11 @@ class SocketService {
     _newServiceRequestController.close();
     _requestCanceledController.close();
     _ratingCreatedController.close();
+    if (!_adminQueuesController.isClosed) {
+      _adminQueuesController.close();
+    }
+    if (!_userProfileUpdatedController.isClosed) {
+      _userProfileUpdatedController.close();
+    }
   }
 }
