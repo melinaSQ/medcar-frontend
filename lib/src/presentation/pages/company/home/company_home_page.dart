@@ -29,6 +29,7 @@ class CompanyHomePage extends StatelessWidget {
         authRepository: sl<AuthRepository>(),
         serviceRequestDataSource: sl<ServiceRequestRemoteDataSource>(),
         shiftsDataSource: sl<ShiftsRemoteDataSource>(),
+        companyAdminDataSource: sl<CompanyAdminRemoteDataSource>(),
       )..add(CompanyHomeInitEvent()),
       child: const _CompanyHomeView(),
     );
@@ -92,7 +93,7 @@ class _CompanyHomeViewState extends State<_CompanyHomeView> {
       return;
     }
     _lastShiftRefresh = now;
-    context.read<CompanyHomeBloc>().add(LoadActiveShiftsEvent());
+    context.read<CompanyHomeBloc>().add(LoadActiveShiftsEvent(silent: true));
   }
 
   Future<void> _initWebSocket() async {
@@ -517,13 +518,18 @@ class _CompanyHomeViewState extends State<_CompanyHomeView> {
         }
         _previousStatus = state.status;
 
-        if (state.errorMessage != null) {
+        if (state.errorMessage != null && state.errorMessage!.isNotEmpty) {
+          final msg = state.errorMessage!;
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
-              content: Text(state.errorMessage!),
+              content: Text(
+                msg.length > 200 ? '${msg.substring(0, 200)}…' : msg,
+              ),
               backgroundColor: Colors.red,
+              duration: const Duration(seconds: 5),
             ),
           );
+          context.read<CompanyHomeBloc>().add(ClearCompanyHomeErrorEvent());
         }
       },
       builder: (context, state) {
@@ -1845,32 +1851,41 @@ class _CompanyHomeViewState extends State<_CompanyHomeView> {
                                           userId: foundUser!['id'],
                                           token: session.accessToken,
                                         );
+                                        if (!this.mounted) return;
                                         Navigator.pop(dialogContext);
-                                        ScaffoldMessenger.of(
-                                          this.context,
-                                        ).showSnackBar(
+                                        await _loadDrivers();
+                                        if (!this.mounted) return;
+                                        setState(() => _currentTabIndex = 3);
+                                        ScaffoldMessenger.of(this.context)
+                                            .showSnackBar(
                                           const SnackBar(
                                             content: Text(
-                                              '✅ Conductor asignado',
+                                              'Conductor agregado. Ya aparece en la pestaña Conductores.',
                                             ),
                                             backgroundColor: Colors.green,
+                                            duration: Duration(seconds: 4),
                                           ),
                                         );
-                                        _loadDrivers();
                                       }
                                     } catch (e) {
-                                      ScaffoldMessenger.of(
-                                        this.context,
-                                      ).showSnackBar(
-                                        SnackBar(
-                                          content: Text(
-                                            'Error: ${e.toString().replaceAll('Exception: ', '')}',
+                                      if (this.mounted) {
+                                        ScaffoldMessenger.of(this.context)
+                                            .showSnackBar(
+                                          SnackBar(
+                                            content: Text(
+                                              e.toString().replaceAll(
+                                                'Exception: ',
+                                                '',
+                                              ),
+                                            ),
+                                            backgroundColor: Colors.red,
                                           ),
-                                          backgroundColor: Colors.red,
-                                        ),
-                                      );
+                                        );
+                                      }
                                     } finally {
-                                      setDialogState(() => isAssigning = false);
+                                      if (dialogContext.mounted) {
+                                        setDialogState(() => isAssigning = false);
+                                      }
                                     }
                                   },
                             style: ElevatedButton.styleFrom(

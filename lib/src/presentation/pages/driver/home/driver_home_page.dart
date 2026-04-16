@@ -50,6 +50,7 @@ class _DriverHomeViewState extends State<_DriverHomeView> {
   StreamSubscription? _canceledSub;
   StreamSubscription? _statusUpdateSub;
   StreamSubscription? _ratingCreatedSub;
+  StreamSubscription<void>? _profileUpdatedSub;
   int? _currentShiftId;
 
   // Flag para evitar procesar cancelación múltiples veces
@@ -165,6 +166,23 @@ class _DriverHomeViewState extends State<_DriverHomeView> {
         if (mounted) {
           print('⭐ Conductor: Recargando calificación...');
           _loadDriverRating();
+        }
+      });
+
+      _profileUpdatedSub = _socketService.userProfileUpdated.listen((_) async {
+        try {
+          await authRepo.refreshUserSession();
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text('Tu cuenta se actualizó (roles o datos).'),
+                backgroundColor: Color(0xFF2E7D32),
+                duration: Duration(seconds: 3),
+              ),
+            );
+          }
+        } catch (e) {
+          print('❌ Conductor: error refrescando sesión tras perfil: $e');
         }
       });
     }
@@ -429,6 +447,7 @@ class _DriverHomeViewState extends State<_DriverHomeView> {
     _canceledSub?.cancel();
     _statusUpdateSub?.cancel();
     _ratingCreatedSub?.cancel();
+    _profileUpdatedSub?.cancel();
     _socketService.disconnect();
     _mapController?.dispose();
     super.dispose();

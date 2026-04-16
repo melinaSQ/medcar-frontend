@@ -1,6 +1,7 @@
 // lib/src/presentation/pages/company/home/bloc/company_home_bloc.dart
 
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:medcar_frontend/src/data/datasources/remote/company_admin_remote_datasource.dart';
 import 'package:medcar_frontend/src/data/datasources/remote/service_request_remote_datasource.dart';
 import 'package:medcar_frontend/src/data/datasources/remote/shifts_remote_datasource.dart';
 import 'package:medcar_frontend/src/domain/repositories/auth_repository.dart';
@@ -11,17 +12,27 @@ class CompanyHomeBloc extends Bloc<CompanyHomeEvent, CompanyHomeState> {
   final AuthRepository authRepository;
   final ServiceRequestRemoteDataSource serviceRequestDataSource;
   final ShiftsRemoteDataSource shiftsDataSource;
+  final CompanyAdminRemoteDataSource companyAdminDataSource;
 
   CompanyHomeBloc({
     required this.authRepository,
     required this.serviceRequestDataSource,
     required this.shiftsDataSource,
+    required this.companyAdminDataSource,
   }) : super(CompanyHomeState()) {
     on<CompanyHomeInitEvent>(_onInit);
     on<LoadPendingRequestsEvent>(_onLoadPendingRequests);
     on<LoadActiveShiftsEvent>(_onLoadActiveShifts);
     on<AssignRequestEvent>(_onAssignRequest);
     on<LogoutEvent>(_onLogout);
+    on<ClearCompanyHomeErrorEvent>(_onClearError);
+  }
+
+  void _onClearError(
+    ClearCompanyHomeErrorEvent event,
+    Emitter<CompanyHomeState> emit,
+  ) {
+    emit(state.copyWith(errorMessage: null));
   }
 
   Future<void> _onInit(
@@ -33,7 +44,19 @@ class CompanyHomeBloc extends Bloc<CompanyHomeEvent, CompanyHomeState> {
     try {
       final session = await authRepository.getUserSession();
       if (session != null) {
-        final userName = '${session.user.name} ${session.user.lastname}';
+        final personName = '${session.user.name} ${session.user.lastname}';
+        String headerName = personName;
+        try {
+          final myCompany = await companyAdminDataSource.getMyCompany(
+            token: session.accessToken,
+          );
+          final companyName = myCompany?['name']?.toString().trim();
+          if (companyName != null && companyName.isNotEmpty) {
+            headerName = companyName;
+          }
+        } catch (_) {
+          // Sin datos de empresa: se muestra el nombre de la persona.
+        }
 
         // Cargar solicitudes pendientes y turnos activos
         final requests = await serviceRequestDataSource.getPendingRequests(
@@ -46,7 +69,7 @@ class CompanyHomeBloc extends Bloc<CompanyHomeEvent, CompanyHomeState> {
         emit(
           state.copyWith(
             status: CompanyHomeStatus.loaded,
-            userName: userName,
+            userName: headerName,
             pendingRequests: requests,
             activeShifts: shifts,
           ),
@@ -96,11 +119,13 @@ class CompanyHomeBloc extends Bloc<CompanyHomeEvent, CompanyHomeState> {
         emit(state.copyWith(activeShifts: shifts));
       }
     } catch (e) {
-      emit(
-        state.copyWith(
-          errorMessage: e.toString().replaceAll('Exception: ', ''),
-        ),
-      );
+      if (!event.silent) {
+        emit(
+          state.copyWith(
+            errorMessage: e.toString().replaceAll('Exception: ', ''),
+          ),
+        );
+      }
     }
   }
 

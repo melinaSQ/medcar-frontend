@@ -6,7 +6,11 @@ class CompanyHomeInitEvent extends CompanyHomeEvent {}
 
 class LoadPendingRequestsEvent extends CompanyHomeEvent {}
 
-class LoadActiveShiftsEvent extends CompanyHomeEvent {}
+class LoadActiveShiftsEvent extends CompanyHomeEvent {
+  /// Si es true (refresco automático), no se muestra error al fallo de red.
+  LoadActiveShiftsEvent({this.silent = false});
+  final bool silent;
+}
 
 class AssignRequestEvent extends CompanyHomeEvent {
   final int requestId;
@@ -16,4 +20,6 @@ class AssignRequestEvent extends CompanyHomeEvent {
 }
 
 class LogoutEvent extends CompanyHomeEvent {}
+
+class ClearCompanyHomeErrorEvent extends CompanyHomeEvent {}
 

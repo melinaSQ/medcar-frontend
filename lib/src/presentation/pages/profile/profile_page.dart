@@ -44,6 +44,9 @@ class _ProfilePageState extends State<ProfilePage>
   Map<String, dynamic>? _myCompanyReg;
   bool _showCompanyRegistrationTile = false;
 
+  /// Roles según sesión (se actualizan con socket / GET users/me).
+  List<String> _accountRoles = [];
+
   SocketService? _profileSocket;
   StreamSubscription<void>? _profileSocketSub;
 
@@ -146,12 +149,46 @@ class _ProfilePageState extends State<ProfilePage>
             (pp != null && pp.isNotEmpty);
         _myCompanyReg = co;
         _showCompanyRegistrationTile = !skipCompany;
+        _accountRoles = List<String>.from(session.user.roles);
       });
     } else {
       setState(() {
         _myCompanyReg = null;
         _showCompanyRegistrationTile = false;
+        _accountRoles = [];
       });
+    }
+  }
+
+  String _roleLabelEs(String role) {
+    switch (role.toUpperCase()) {
+      case 'USER':
+        return 'Usuario';
+      case 'DRIVER':
+        return 'Conductor';
+      case 'COMPANY_ADMIN':
+        return 'Admin de empresa';
+      case 'ADMIN':
+      case 'SYSTEM_ADMIN':
+        return 'Administrador';
+      default:
+        return role;
+    }
+  }
+
+  IconData _roleIcon(String role) {
+    switch (role.toUpperCase()) {
+      case 'USER':
+        return Icons.person_outline;
+      case 'DRIVER':
+        return Icons.local_shipping_outlined;
+      case 'COMPANY_ADMIN':
+        return Icons.business_outlined;
+      case 'ADMIN':
+      case 'SYSTEM_ADMIN':
+        return Icons.admin_panel_settings_outlined;
+      default:
+        return Icons.badge_outlined;
     }
   }
 
@@ -395,6 +432,36 @@ class _ProfilePageState extends State<ProfilePage>
                       ),
                     ),
                     const SizedBox(height: 32),
+                    if (_accountRoles.isNotEmpty) ...[
+                      Align(
+                        alignment: Alignment.centerLeft,
+                        child: Text(
+                          'Roles en tu cuenta',
+                          style: TextStyle(
+                            fontWeight: FontWeight.w600,
+                            color: Colors.grey.shade800,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      Wrap(
+                        spacing: 8,
+                        runSpacing: 8,
+                        children: _accountRoles.map((r) {
+                          final label = _roleLabelEs(r);
+                          return Chip(
+                            avatar: Icon(
+                              _roleIcon(r),
+                              size: 18,
+                              color: const Color(0xFF652580),
+                            ),
+                            label: Text(label),
+                            backgroundColor: Colors.grey.shade100,
+                          );
+                        }).toList(),
+                      ),
+                      const SizedBox(height: 24),
+                    ],
                     if (_hasPendingContactRequest)
                       Padding(
                         padding: const EdgeInsets.only(bottom: 16),

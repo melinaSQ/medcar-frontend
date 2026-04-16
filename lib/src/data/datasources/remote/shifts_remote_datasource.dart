@@ -1,6 +1,8 @@
 // lib/src/data/datasources/remote/shifts_remote_datasource.dart
 
 import 'dart:convert';
+import 'dart:io';
+
 import 'package:http/http.dart' as http;
 import 'package:medcar_frontend/src/data/datasources/remote/auth_remote_datasource.dart';
 
@@ -24,13 +26,31 @@ class ShiftsRemoteDataSourceImpl implements ShiftsRemoteDataSource {
   Future<List<Map<String, dynamic>>> getActiveShifts({
     required String token,
   }) async {
-    final response = await client.get(
-      Uri.parse('$apiUrl/shifts/active'),
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': 'Bearer $token',
-      },
-    );
+    Future<http.Response> fetch() => client.get(
+          Uri.parse('$apiUrl/shifts/active'),
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': 'Bearer $token',
+          },
+        );
+
+    http.Response response;
+    try {
+      response = await fetch();
+    } on SocketException catch (_) {
+      await Future<void>.delayed(const Duration(milliseconds: 500));
+      response = await fetch();
+    } catch (e) {
+      final msg = e.toString();
+      if (msg.contains('ClientException') ||
+          msg.contains('Connection closed') ||
+          msg.contains('connection abort')) {
+        await Future<void>.delayed(const Duration(milliseconds: 500));
+        response = await fetch();
+      } else {
+        rethrow;
+      }
+    }
 
     if (response.statusCode == 200) {
       final List<dynamic> data = json.decode(response.body);

@@ -1,10 +1,13 @@
 // lib/src/presentation/pages/roles/role_selection_page.dart
 // ignore_for_file: deprecated_member_use, use_build_context_synchronously
 
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:medcar_frontend/dependency_injection.dart';
 import 'package:medcar_frontend/src/data/datasources/remote/company_admin_remote_datasource.dart';
 import 'package:medcar_frontend/src/data/datasources/remote/service_request_remote_datasource.dart';
+import 'package:medcar_frontend/src/data/services/socket_service.dart';
 import 'package:medcar_frontend/src/domain/repositories/auth_repository.dart';
 
 class RoleSelectionPage extends StatefulWidget {
@@ -14,17 +17,53 @@ class RoleSelectionPage extends StatefulWidget {
   State<RoleSelectionPage> createState() => _RoleSelectionPageState();
 }
 
-class _RoleSelectionPageState extends State<RoleSelectionPage> {
+class _RoleSelectionPageState extends State<RoleSelectionPage>
+    with WidgetsBindingObserver {
   List<String> _userRoles = [];
   String _userName = '';
   bool _isLoading = true;
   Map<String, dynamic>? _activeRequest;
   Map<String, dynamic>? _myCompany;
 
+  SocketService? _profileSocket;
+  StreamSubscription<void>? _profileSocketSub;
+
   @override
   void initState() {
     super.initState();
-    _loadUserData();
+    WidgetsBinding.instance.addObserver(this);
+    _bootstrap();
+  }
+
+  Future<void> _bootstrap() async {
+    await _loadUserData();
+    await _listenProfileSocket();
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    _profileSocketSub?.cancel();
+    _profileSocket?.disconnect();
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      _refreshSessionAndReload();
+    }
+  }
+
+  Future<void> _listenProfileSocket() async {
+    final session = await sl<AuthRepository>().getUserSession();
+    if (!mounted || session == null) return;
+    _profileSocket ??= SocketService();
+    _profileSocket!.connect(session.accessToken);
+    await _profileSocketSub?.cancel();
+    _profileSocketSub = _profileSocket!.userProfileUpdated.listen((_) {
+      if (mounted) _refreshSessionAndReload();
+    });
   }
 
   Future<void> _loadUserData() async {
@@ -246,7 +285,7 @@ class _RoleSelectionPageState extends State<RoleSelectionPage> {
                       ],
                       
                       // Mostrar opción de conductor si tiene el rol
-                      if (_userRoles.contains('DRIVER'))
+                      if (_userRoles.any((r) => r.toUpperCase() == 'DRIVER'))
                         _buildRoleCard(
                           icon: Icons.local_shipping,
                           title: 'Conductor',
@@ -263,7 +302,7 @@ class _RoleSelectionPageState extends State<RoleSelectionPage> {
                         ),
                       
                       // Mostrar opción de admin si tiene el rol
-                      if (_userRoles.contains('COMPANY_ADMIN'))
+                      if (_userRoles.any((r) => r.toUpperCase() == 'COMPANY_ADMIN'))
                         _buildRoleCard(
                           icon: Icons.business,
                           title: 'Admin de Empresa',
