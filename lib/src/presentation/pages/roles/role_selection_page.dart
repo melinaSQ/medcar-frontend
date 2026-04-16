@@ -197,8 +197,9 @@ class _RoleSelectionPageState extends State<RoleSelectionPage> {
                           subtitle: 'Gestión del sistema',
                           color: const Color(0xFF8B0000),
                           onTap: () {
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              const SnackBar(content: Text('Próximamente...')),
+                            Navigator.pushReplacementNamed(
+                              context,
+                              'admin/home',
                             );
                           },
                         ),

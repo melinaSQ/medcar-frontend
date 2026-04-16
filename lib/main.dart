@@ -19,6 +19,11 @@ import 'package:medcar_frontend/src/presentation/pages/driver/shifts_history/dri
 import 'package:medcar_frontend/src/presentation/pages/profile/profile_page.dart';
 import 'package:medcar_frontend/src/presentation/pages/roles/role_selection_page.dart';
 import 'package:medcar_frontend/src/presentation/pages/splash/splash_page.dart';
+import 'package:medcar_frontend/src/presentation/pages/admin/admin_system_home_page.dart';
+import 'package:medcar_frontend/src/presentation/pages/admin/admin_companies_page.dart';
+import 'package:medcar_frontend/src/presentation/pages/admin/admin_users_page.dart';
+import 'package:medcar_frontend/src/presentation/pages/admin/admin_global_history_page.dart';
+import 'package:medcar_frontend/src/presentation/pages/admin/admin_user_history_page.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'firebase_options.dart';
@@ -91,6 +96,12 @@ class MyApp extends StatelessWidget {
           'driver/shifts-history': (BuildContext context) =>
               const DriverShiftsHistoryPage(),
           'profile': (BuildContext context) => const ProfilePage(),
+          'admin/home': (BuildContext context) => const AdminSystemHomePage(),
+          'admin/companies': (BuildContext context) =>
+              const AdminCompaniesPage(),
+          'admin/users': (BuildContext context) => const AdminUsersPage(),
+          'admin/global-history': (BuildContext context) =>
+              const AdminGlobalHistoryPage(),
         },
         onGenerateRoute: (settings) {
           // Ruta con parámetros para tracking
@@ -112,6 +123,18 @@ class MyApp extends StatelessWidget {
                 serviceRequestId: args['serviceRequestId'],
                 driverName: args['driverName'],
                 ambulancePlate: args['ambulancePlate'],
+              ),
+            );
+          }
+          if (settings.name == 'admin/user-history') {
+            final args = settings.arguments as Map<String, dynamic>;
+            final id = args['userId'];
+            final uid = id is int ? id : int.tryParse(id.toString()) ?? 0;
+            final label = (args['label'] ?? 'Usuario').toString();
+            return MaterialPageRoute(
+              builder: (context) => AdminUserHistoryPage(
+                userId: uid,
+                userLabel: label,
               ),
             );
           }
@@ -149,7 +172,11 @@ void _handleNotificationNavigation(RemoteMessage message) {
       // Nueva solicitud de emergencia (para empresa/conductor)
       // Navegar a la pantalla de home de empresa o conductor
       final role = data['role'] as String?;
-      if (role == 'company' || role == 'admin') {
+      if (role == 'ADMIN' || role == 'system_admin') {
+        navigator.pushNamedAndRemoveUntil('admin/home', (route) => false);
+      } else if (role == 'company' ||
+          role == 'COMPANY_ADMIN' ||
+          role == 'admin') {
         navigator.pushNamedAndRemoveUntil('company/home', (route) => false);
       } else if (role == 'driver') {
         navigator.pushNamedAndRemoveUntil('driver/home', (route) => false);
@@ -251,7 +278,11 @@ void _handleNotificationNavigation(RemoteMessage message) {
       final role = data['role'] as String?;
       if (role == 'client') {
         navigator.pushNamedAndRemoveUntil('client/home', (route) => false);
-      } else if (role == 'company' || role == 'admin') {
+      } else if (role == 'ADMIN' || role == 'system_admin') {
+        navigator.pushNamedAndRemoveUntil('admin/home', (route) => false);
+      } else if (role == 'company' ||
+          role == 'COMPANY_ADMIN' ||
+          role == 'admin') {
         navigator.pushNamedAndRemoveUntil('company/home', (route) => false);
       } else if (role == 'driver') {
         navigator.pushNamedAndRemoveUntil('driver/home', (route) => false);
