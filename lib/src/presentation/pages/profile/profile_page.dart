@@ -7,6 +7,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:medcar_frontend/dependency_injection.dart' as di;
 import 'package:medcar_frontend/navigation/route_observer.dart';
+import 'package:medcar_frontend/src/data/datasources/remote/company_admin_remote_datasource.dart';
 import 'package:medcar_frontend/src/data/services/socket_service.dart';
 import 'package:medcar_frontend/src/domain/repositories/auth_repository.dart';
 
@@ -38,6 +39,10 @@ class _ProfilePageState extends State<ProfilePage>
   bool _showNewPassword = false;
   bool _showConfirmPassword = false;
   bool _hasPendingContactRequest = false;
+
+  /// Solicitud de empresa del usuario (si aplica).
+  Map<String, dynamic>? _myCompanyReg;
+  bool _showCompanyRegistrationTile = false;
 
   SocketService? _profileSocket;
   StreamSubscription<void>? _profileSocketSub;
@@ -120,6 +125,18 @@ class _ProfilePageState extends State<ProfilePage>
     if (session != null) {
       final pe = session.user.pendingEmail;
       final pp = session.user.pendingPhone;
+      final ru = session.user.roles.map((e) => e.toUpperCase()).toList();
+      final skipCompany = ru.contains('COMPANY_ADMIN') ||
+          ru.contains('ADMIN') ||
+          ru.contains('SYSTEM_ADMIN');
+      Map<String, dynamic>? co;
+      if (!skipCompany) {
+        try {
+          co = await di.sl<CompanyAdminRemoteDataSource>().getMyCompany(
+            token: session.accessToken,
+          );
+        } catch (_) {}
+      }
       setState(() {
         _nameController.text = session.user.name;
         _lastnameController.text = session.user.lastname;
@@ -127,7 +144,30 @@ class _ProfilePageState extends State<ProfilePage>
         _emailController.text = session.user.email;
         _hasPendingContactRequest = (pe != null && pe.isNotEmpty) ||
             (pp != null && pp.isNotEmpty);
+        _myCompanyReg = co;
+        _showCompanyRegistrationTile = !skipCompany;
       });
+    } else {
+      setState(() {
+        _myCompanyReg = null;
+        _showCompanyRegistrationTile = false;
+      });
+    }
+  }
+
+  String _companyRegSubtitle() {
+    if (_myCompanyReg == null) {
+      return 'Solicita el rol de administrador de empresa (requiere aprobación del sistema).';
+    }
+    switch (_myCompanyReg!['status']?.toString().toUpperCase()) {
+      case 'PENDING':
+        return 'Solicitud en revisión. Toca para ver detalles.';
+      case 'REJECTED':
+        return 'Solicitud rechazada. Toca para corregir y reenviar.';
+      case 'APPROVED':
+        return 'Empresa aprobada. Si no ves el panel, vuelve al menú de roles y actualiza sesión.';
+      default:
+        return 'Toca para continuar.';
     }
   }
 
@@ -385,6 +425,64 @@ class _ProfilePageState extends State<ProfilePage>
                           ),
                         ),
                       ),
+                    if (_showCompanyRegistrationTile) ...[
+                      const SizedBox(height: 16),
+                      Material(
+                        color: Colors.blueGrey.shade50,
+                        borderRadius: BorderRadius.circular(12),
+                        child: InkWell(
+                          borderRadius: BorderRadius.circular(12),
+                          onTap: () async {
+                            await Navigator.pushNamed(
+                              context,
+                              'company/register',
+                              arguments: _myCompanyReg,
+                            );
+                            if (mounted) await _syncProfileFromServer();
+                          },
+                          child: Padding(
+                            padding: const EdgeInsets.all(14),
+                            child: Row(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Icon(
+                                  Icons.business_center,
+                                  color: Colors.blueGrey.shade800,
+                                ),
+                                const SizedBox(width: 12),
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      Text(
+                                        'Empresa de ambulancias',
+                                        style: TextStyle(
+                                          fontWeight: FontWeight.bold,
+                                          color: Colors.blueGrey.shade900,
+                                        ),
+                                      ),
+                                      const SizedBox(height: 4),
+                                      Text(
+                                        _companyRegSubtitle(),
+                                        style: TextStyle(
+                                          fontSize: 13,
+                                          color: Colors.grey.shade800,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                                Icon(
+                                  Icons.chevron_right,
+                                  color: Colors.blueGrey.shade600,
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
                     // Nombre
                     TextFormField(
                       controller: _nameController,

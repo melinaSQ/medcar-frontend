@@ -3,6 +3,7 @@
 
 import 'package:flutter/material.dart';
 import 'package:medcar_frontend/dependency_injection.dart';
+import 'package:medcar_frontend/src/data/datasources/remote/company_admin_remote_datasource.dart';
 import 'package:medcar_frontend/src/data/datasources/remote/service_request_remote_datasource.dart';
 import 'package:medcar_frontend/src/domain/repositories/auth_repository.dart';
 
@@ -18,6 +19,7 @@ class _RoleSelectionPageState extends State<RoleSelectionPage> {
   String _userName = '';
   bool _isLoading = true;
   Map<String, dynamic>? _activeRequest;
+  Map<String, dynamic>? _myCompany;
 
   @override
   void initState() {
@@ -38,9 +40,25 @@ class _RoleSelectionPageState extends State<RoleSelectionPage> {
         // Ignorar errores al verificar solicitud activa
       }
 
+      Map<String, dynamic>? myCo;
+      final rolesUpper = session.user.roles.map((e) => e.toUpperCase()).toList();
+      final skipCompanyLookup = rolesUpper.contains('COMPANY_ADMIN') ||
+          rolesUpper.contains('ADMIN') ||
+          rolesUpper.contains('SYSTEM_ADMIN');
+      if (!skipCompanyLookup) {
+        try {
+          myCo = await sl<CompanyAdminRemoteDataSource>().getMyCompany(
+            token: session.accessToken,
+          );
+        } catch (e) {
+          myCo = null;
+        }
+      }
+
       setState(() {
         _userRoles = session.user.roles;
         _userName = '${session.user.name} ${session.user.lastname}';
+        _myCompany = myCo;
         _isLoading = false;
       });
     } else {
@@ -48,6 +66,24 @@ class _RoleSelectionPageState extends State<RoleSelectionPage> {
         Navigator.pushReplacementNamed(context, 'login');
       }
     }
+  }
+
+  bool _hasCompanyAdminRole() =>
+      _userRoles.any((r) => r.toUpperCase() == 'COMPANY_ADMIN');
+
+  bool _hasSystemAdminRole() => _userRoles.any((r) {
+        final u = r.toUpperCase();
+        return u == 'ADMIN' || u == 'SYSTEM_ADMIN';
+      });
+
+  String? _companyStatusUpper() =>
+      _myCompany?['status']?.toString().toUpperCase();
+
+  Future<void> _refreshSessionAndReload() async {
+    try {
+      await sl<AuthRepository>().refreshUserSession();
+    } catch (_) {}
+    if (mounted) await _loadUserData();
   }
 
   @override
@@ -154,6 +190,60 @@ class _RoleSelectionPageState extends State<RoleSelectionPage> {
                         onTap: () => Navigator.pushReplacementNamed(context, 'client/home'),
                         hasWarning: _activeRequest != null,
                       ),
+
+                      if (!_hasSystemAdminRole() && !_hasCompanyAdminRole()) ...[
+                        if (_companyStatusUpper() == 'PENDING')
+                          _buildRoleCard(
+                            icon: Icons.hourglass_top,
+                            title: 'Empresa en revisión',
+                            subtitle:
+                                'Tu solicitud de registro está pendiente. Toca para ver el detalle.',
+                            color: Colors.deepOrange.shade800,
+                            onTap: () {
+                              Navigator.pushNamed(
+                                context,
+                                'company/register',
+                                arguments: _myCompany,
+                              ).then((_) => _loadUserData());
+                            },
+                          )
+                        else if (_companyStatusUpper() == 'REJECTED')
+                          _buildRoleCard(
+                            icon: Icons.business_center,
+                            title: 'Registrar empresa',
+                            subtitle:
+                                'Tu solicitud fue rechazada. Corrige los datos y vuelve a enviar.',
+                            color: const Color(0xFF1E3A5F),
+                            onTap: () {
+                              Navigator.pushNamed(
+                                context,
+                                'company/register',
+                                arguments: _myCompany,
+                              ).then((_) => _loadUserData());
+                            },
+                          )
+                        else if (_companyStatusUpper() == 'APPROVED')
+                          _buildRoleCard(
+                            icon: Icons.verified_user,
+                            title: 'Empresa aprobada',
+                            subtitle:
+                                'Actualiza tu sesión para habilitar «Admin de Empresa».',
+                            color: Colors.green.shade800,
+                            onTap: _refreshSessionAndReload,
+                          )
+                        else
+                          _buildRoleCard(
+                            icon: Icons.business_center,
+                            title: 'Registrar mi empresa',
+                            subtitle:
+                                'Solicita el rol de administrador de una empresa de ambulancias',
+                            color: const Color(0xFF1E3A5F),
+                            onTap: () {
+                              Navigator.pushNamed(context, 'company/register')
+                                  .then((_) => _loadUserData());
+                            },
+                          ),
+                      ],
                       
                       // Mostrar opción de conductor si tiene el rol
                       if (_userRoles.contains('DRIVER'))

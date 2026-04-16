@@ -51,6 +51,17 @@ abstract class CompanyAdminRemoteDataSource {
     required int userId,
     required String token,
   });
+
+  /// Empresa del usuario autenticado o null.
+  Future<Map<String, dynamic>?> getMyCompany({required String token});
+
+  /// Solicitud de registro de empresa (queda PENDING hasta que un admin apruebe).
+  Future<Map<String, dynamic>> registerCompany({
+    required String name,
+    required String ruc,
+    required String phone,
+    required String token,
+  });
 }
 
 class CompanyAdminRemoteDataSourceImpl implements CompanyAdminRemoteDataSource {
@@ -286,6 +297,60 @@ class CompanyAdminRemoteDataSourceImpl implements CompanyAdminRemoteDataSource {
     } else {
       final errorBody = json.decode(response.body);
       throw Exception(errorBody['message'] ?? 'Error al quitar rol');
+    }
+  }
+
+  @override
+  Future<Map<String, dynamic>?> getMyCompany({required String token}) async {
+    final response = await client.get(
+      Uri.parse('$apiUrl/companies/me'),
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer $token',
+      },
+    );
+    if (response.statusCode == 200) {
+      final raw = response.body.trim();
+      if (raw.isEmpty || raw == 'null') return null;
+      final decoded = json.decode(raw);
+      if (decoded == null) return null;
+      return Map<String, dynamic>.from(decoded as Map);
+    }
+    throw Exception('Error al obtener datos de empresa');
+  }
+
+  @override
+  Future<Map<String, dynamic>> registerCompany({
+    required String name,
+    required String ruc,
+    required String phone,
+    required String token,
+  }) async {
+    final response = await client.post(
+      Uri.parse('$apiUrl/companies'),
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer $token',
+      },
+      body: json.encode({
+        'name': name.trim(),
+        'ruc': ruc.trim(),
+        'phone': phone.trim(),
+      }),
+    );
+    if (response.statusCode == 201 || response.statusCode == 200) {
+      return Map<String, dynamic>.from(json.decode(response.body) as Map);
+    }
+    try {
+      final errorBody = json.decode(response.body);
+      final msg = errorBody['message'];
+      if (msg is List && msg.isNotEmpty) {
+        throw Exception(msg.first.toString());
+      }
+      throw Exception(msg?.toString() ?? 'Error al registrar empresa');
+    } catch (e) {
+      if (e is Exception) rethrow;
+      throw Exception('Error al registrar empresa');
     }
   }
 }

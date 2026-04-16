@@ -12,6 +12,7 @@ import 'package:medcar_frontend/src/presentation/pages/client/tracking/request_t
 import 'package:medcar_frontend/src/presentation/pages/client/rating/rating_page.dart';
 import 'package:medcar_frontend/src/presentation/pages/client/history/client_history_page.dart';
 import 'package:medcar_frontend/src/presentation/pages/company/home/company_home_page.dart';
+import 'package:medcar_frontend/src/presentation/pages/company/company_registration_page.dart';
 import 'package:medcar_frontend/src/presentation/pages/driver/home/driver_home_page.dart';
 import 'package:medcar_frontend/src/presentation/pages/driver/history/driver_history_page.dart';
 import 'package:medcar_frontend/src/presentation/pages/driver/ratings/driver_ratings_page.dart';
@@ -93,6 +94,13 @@ class MyApp extends StatelessWidget {
           'client/map': (BuildContext context) => const ClientMapPage(),
           'client/history': (BuildContext context) => const ClientHistoryPage(),
           'company/home': (BuildContext context) => const CompanyHomePage(),
+          'company/register': (BuildContext context) {
+            final args = ModalRoute.of(context)?.settings.arguments;
+            return CompanyRegistrationPage(
+              existingCompany:
+                  args is Map<String, dynamic> ? args : null,
+            );
+          },
           'driver/home': (BuildContext context) => const DriverHomePage(),
           'driver/history': (BuildContext context) => const DriverHistoryPage(),
           'driver/ratings': (BuildContext context) => const DriverRatingsPage(),
