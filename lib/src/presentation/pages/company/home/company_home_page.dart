@@ -947,9 +947,16 @@ class _CompanyHomeViewState extends State<_CompanyHomeView> {
     );
   }
 
+  int? _parseEntityId(dynamic raw) {
+    if (raw == null) return null;
+    if (raw is int) return raw;
+    if (raw is num) return raw.toInt();
+    return int.tryParse(raw.toString());
+  }
+
   Widget _buildAmbulanceCard(Map<String, dynamic> ambulance) {
     final status = ambulance['status'] ?? 'OPERATIONAL';
-    final ambulanceId = ambulance['id'];
+    final ambulanceId = _parseEntityId(ambulance['id']);
 
     String _getStatusText(String status) {
       switch (status) {

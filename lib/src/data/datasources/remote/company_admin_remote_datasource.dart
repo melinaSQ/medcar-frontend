@@ -69,6 +69,24 @@ class CompanyAdminRemoteDataSourceImpl implements CompanyAdminRemoteDataSource {
 
   CompanyAdminRemoteDataSourceImpl({required this.client});
 
+  String _httpErrorMessage(http.Response response, String fallback) {
+    final code = response.statusCode;
+    final body = response.body.trim();
+    if (body.isEmpty) {
+      return '$fallback (HTTP $code)';
+    }
+    try {
+      final decoded = json.decode(body);
+      if (decoded is Map && decoded['message'] != null) {
+        return '${decoded['message']} (HTTP $code)';
+      }
+    } catch (_) {
+      /* cuerpo HTML o texto plano, p. ej. en 500 */
+    }
+    final snippet = body.length > 160 ? '${body.substring(0, 160)}…' : body;
+    return '$fallback (HTTP $code): $snippet';
+  }
+
   // ==================== AMBULANCIAS ====================
 
   @override
@@ -162,8 +180,9 @@ class CompanyAdminRemoteDataSourceImpl implements CompanyAdminRemoteDataSource {
     );
 
     if (response.statusCode != 200 && response.statusCode != 204) {
-      final errorBody = json.decode(response.body);
-      throw Exception(errorBody['message'] ?? 'Error al eliminar ambulancia');
+      throw Exception(
+        _httpErrorMessage(response, 'Error al eliminar ambulancia'),
+      );
     }
   }
 
