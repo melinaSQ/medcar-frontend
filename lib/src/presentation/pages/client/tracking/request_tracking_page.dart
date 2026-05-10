@@ -4,13 +4,19 @@
 
 import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:medcar_frontend/dependency_injection.dart';
 import 'package:medcar_frontend/src/data/datasources/remote/ratings_remote_datasource.dart';
+import 'package:medcar_frontend/src/data/datasources/remote/service_request_remote_datasource.dart';
 import 'package:medcar_frontend/src/data/services/directions_service.dart';
 import 'package:medcar_frontend/src/data/services/socket_service.dart';
 import 'package:medcar_frontend/src/domain/repositories/auth_repository.dart';
 import 'package:medcar_frontend/src/domain/repositories/service_request_repository.dart';
+import 'package:medcar_frontend/src/presentation/pages/client/home/bloc/client_home_bloc.dart';
+import 'package:medcar_frontend/src/presentation/pages/client/home/bloc/client_home_event.dart';
+import 'package:medcar_frontend/src/utils/map_coercion.dart';
+import 'package:medcar_frontend/src/utils/service_request_status.dart';
 
 class RequestTrackingPage extends StatefulWidget {
   final double userLat;
@@ -29,7 +35,7 @@ class RequestTrackingPage extends StatefulWidget {
 }
 
 class _RequestTrackingPageState extends State<RequestTrackingPage> {
-  final SocketService _socketService = SocketService();
+  final SocketService _socketService = sl<SocketService>();
   GoogleMapController? _mapController;
 
   String _currentStatus = 'SEARCHING';
@@ -41,7 +47,10 @@ class _RequestTrackingPageState extends State<RequestTrackingPage> {
   // ETA y distancia
   String? _eta;
   String? _distance;
-  bool _isLoadingRoute = false;
+  int _directionsRequestGen = 0;
+  int _polylineEpoch = 0;
+  /// ID resuelto desde el API si `widget.requestId` viene vacío (notificaciones, etc.).
+  int? _resolvedRequestId;
 
   // Datos del conductor y ambulancia para calificación
   String? _driverName;
@@ -66,12 +75,140 @@ class _RequestTrackingPageState extends State<RequestTrackingPage> {
   StreamSubscription? _locationSub;
   StreamSubscription? _statusSub;
   StreamSubscription? _ratingCreatedSub;
+  Timer? _hydratePollTimer;
+
+  bool _sameRequestId(dynamic a, dynamic b) {
+    if (a == null || b == null) return true;
+    final ai = a is int ? a : int.tryParse(a.toString());
+    final bi = b is int ? b : int.tryParse(b.toString());
+    return ai != null && bi != null && ai == bi;
+  }
+
+  int? get _effectiveRequestId => _resolvedRequestId ?? widget.requestId;
 
   @override
   void initState() {
     super.initState();
+    _resolvedRequestId = widget.requestId;
     _initializeMarkers();
     _connectWebSocket();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      Future<void>.delayed(
+        const Duration(milliseconds: 500),
+        _hydrateActiveRequestFromApi,
+      );
+    });
+    _hydratePollTimer = Timer.periodic(const Duration(seconds: 8), (_) {
+      if (!mounted) return;
+      if (_currentStatus == 'COMPLETED' || _currentStatus == 'CANCELED') {
+        return;
+      }
+      _hydrateActiveRequestFromApi();
+    });
+  }
+
+  /// Si el socket falló o el evento llegó antes de autenticar, el REST trae la misma solicitud con turno.
+  Future<void> _hydrateActiveRequestFromApi() async {
+    try {
+      final authRepo = sl<AuthRepository>();
+      final session = await authRepo.getUserSession();
+      if (session == null || !mounted) return;
+      final ds = sl<ServiceRequestRemoteDataSource>();
+      final active = await ds.getActiveRequest(token: session.accessToken);
+      if (!mounted || active == null) return;
+      final rid = active['id'];
+      if (widget.requestId != null &&
+          rid != null &&
+          !_sameRequestId(rid, widget.requestId)) {
+        return;
+      }
+      final activeMap = coerceMap(active) ?? Map<String, dynamic>.from(active);
+      final shift = coerceMap(activeMap['shift']);
+      final msg = shift != null
+          ? 'Ambulancia asignada.'
+          : 'Buscando ambulancia disponible...';
+      await _applyAssignedRequestDetails(
+        activeMap,
+        message: msg,
+        showAssignedSnack: false,
+      );
+    } catch (e) {
+      print('Hydrate active request: $e');
+    }
+  }
+
+  Future<void> _applyAssignedRequestDetails(
+    Map<String, dynamic> requestDetails, {
+    required String message,
+    bool showAssignedSnack = true,
+  }) async {
+    final shift = coerceMap(requestDetails['shift']);
+    if (shift != null) {
+      final driver = coerceMap(shift['driver']);
+      final ambulance = coerceMap(shift['ambulance']);
+      if (driver != null) {
+        _driverName = '${driver['name'] ?? ''} ${driver['lastname'] ?? ''}'
+            .trim();
+        _driverId = driver['id'] is int
+            ? driver['id'] as int
+            : int.tryParse(driver['id']?.toString() ?? '');
+        if (_driverId != null) {
+          await _loadDriverRating(_driverId!);
+        }
+      }
+      if (ambulance != null) {
+        _ambulancePlate = ambulance['plate']?.toString();
+        final company = coerceMap(ambulance['company']);
+        if (company != null) {
+          final companyUser = coerceMap(company['user']);
+          if (companyUser != null) {
+            _companyUserId = companyUser['id'] is int
+                ? companyUser['id'] as int
+                : int.tryParse(companyUser['id']?.toString() ?? '');
+            if (_companyUserId != null) {
+              await _loadCompanyRating(_companyUserId!);
+            }
+          }
+        }
+      }
+    }
+
+    final rid = parseServiceRequestId(requestDetails['id']);
+    if (rid != null) {
+      _resolvedRequestId = rid;
+    }
+
+    final status = normalizeServiceRequestStatus(
+      requestDetails['status']?.toString(),
+      hasAssignedShift: shift != null,
+    );
+
+    if (!mounted) return;
+    setState(() {
+      _currentStatus = status;
+      _statusMessage = message;
+    });
+    if (showAssignedSnack) {
+      _showSnackBar('🚑 $message');
+    }
+
+    await _seedAmbulanceFromShift(shift);
+  }
+
+  /// Última posición guardada en el turno (backend) cuando el socket no entrega eventos.
+  Future<void> _seedAmbulanceFromShift(Map<String, dynamic>? shift) async {
+    if (shift == null || !mounted) return;
+    final lat = shift['lastKnownLat'] ?? shift['last_known_lat'];
+    final lon = shift['lastKnownLon'] ?? shift['last_known_lon'];
+    final la = lat is num
+        ? lat.toDouble()
+        : double.tryParse(lat?.toString() ?? '');
+    final lo = lon is num
+        ? lon.toDouble()
+        : double.tryParse(lon?.toString() ?? '');
+    if (la == null || lo == null) return;
+    if (la.abs() < 1e-6 && lo.abs() < 1e-6) return;
+    await _updateAmbulancePosition(la, lo);
   }
 
   void _initializeMarkers() {
@@ -85,6 +222,21 @@ class _RequestTrackingPageState extends State<RequestTrackingPage> {
     };
   }
 
+  void _cancelTrackingSocketSubs() {
+    _connectionSub?.cancel();
+    _authSub?.cancel();
+    _assignedSub?.cancel();
+    _locationSub?.cancel();
+    _statusSub?.cancel();
+    _ratingCreatedSub?.cancel();
+    _connectionSub = null;
+    _authSub = null;
+    _assignedSub = null;
+    _locationSub = null;
+    _statusSub = null;
+    _ratingCreatedSub = null;
+  }
+
   Future<void> _connectWebSocket() async {
     try {
       final authRepo = sl<AuthRepository>();
@@ -95,58 +247,32 @@ class _RequestTrackingPageState extends State<RequestTrackingPage> {
         return;
       }
 
+      _cancelTrackingSocketSubs();
+
       // Escuchar eventos
       _connectionSub = _socketService.connectionStream.listen((connected) {
         setState(() => _isConnected = connected);
       });
 
-      _authSub = _socketService.authStream.listen((authenticated) {
+      _authSub = _socketService.authStream.listen((authenticated) async {
         if (authenticated) {
-          setState(() {
-            _statusMessage = 'Conectado. Buscando ambulancia...';
-          });
+          if (mounted) {
+            setState(() {
+              _statusMessage = 'Conectado. Buscando ambulancia...';
+            });
+          }
+          await _hydrateActiveRequestFromApi();
         }
       });
 
       _assignedSub = _socketService.requestAssignedStream.listen((
         update,
       ) async {
-        // Extraer datos del conductor y ambulancia
-        final requestDetails = update.requestDetails;
-        final shift = requestDetails['shift'] as Map<String, dynamic>?;
-        if (shift != null) {
-          final driver = shift['driver'] as Map<String, dynamic>?;
-          final ambulance = shift['ambulance'] as Map<String, dynamic>?;
-          if (driver != null) {
-            _driverName = '${driver['name'] ?? ''} ${driver['lastname'] ?? ''}'
-                .trim();
-            _driverId = driver['id'];
-            // Obtener promedio de calificaciones del conductor
-            if (_driverId != null) {
-              await _loadDriverRating(_driverId!);
-            }
-          }
-          if (ambulance != null) {
-            _ambulancePlate = ambulance['plate'];
-            final company = ambulance['company'] as Map<String, dynamic>?;
-            if (company != null) {
-              final companyUser = company['user'] as Map<String, dynamic>?;
-              if (companyUser != null) {
-                _companyUserId = companyUser['id'];
-                // Cargar calificación de la empresa
-                if (_companyUserId != null) {
-                  await _loadCompanyRating(_companyUserId!);
-                }
-              }
-            }
-          }
-        }
-
-        setState(() {
-          _currentStatus = 'ASSIGNED';
-          _statusMessage = update.message;
-        });
-        _showSnackBar('🚑 ${update.message}');
+        await _applyAssignedRequestDetails(
+          update.requestDetails,
+          message: update.message,
+          showAssignedSnack: true,
+        );
       });
 
       _locationSub = _socketService.ambulanceLocationStream.listen((location) {
@@ -177,7 +303,7 @@ class _RequestTrackingPageState extends State<RequestTrackingPage> {
     }
   }
 
-  void _updateAmbulancePosition(double lat, double lng) async {
+  Future<void> _updateAmbulancePosition(double lat, double lng) async {
     final newPosition = LatLng(lat, lng);
 
     setState(() {
@@ -198,18 +324,30 @@ class _RequestTrackingPageState extends State<RequestTrackingPage> {
       };
     });
 
-    // Obtener ruta real con Google Directions API
     await _getDirections(newPosition);
 
-    // Ajustar cámara para mostrar ambos puntos
+    if (mounted && _ambulancePosition != null) {
+      setState(() {
+        _markers = {
+          ..._markers.where((m) => m.markerId.value != 'ambulance_location'),
+          Marker(
+            markerId: const MarkerId('ambulance_location'),
+            position: _ambulancePosition!,
+            icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueBlue),
+            infoWindow: InfoWindow(
+              title: 'Ambulancia',
+              snippet: _eta != null ? 'Llega en $_eta' : null,
+            ),
+          ),
+        };
+      });
+    }
+
     _fitBounds();
   }
 
   Future<void> _getDirections(LatLng ambulancePos) async {
-    if (_isLoadingRoute) return;
-
-    _isLoadingRoute = true;
-
+    final gen = ++_directionsRequestGen;
     try {
       final userPos = LatLng(widget.userLat, widget.userLng);
       final result = await DirectionsService.getDirections(
@@ -217,41 +355,66 @@ class _RequestTrackingPageState extends State<RequestTrackingPage> {
         destination: userPos,
       );
 
-      if (result != null && mounted) {
+      if (!mounted || gen != _directionsRequestGen) {
+        return;
+      }
+
+      if (result != null) {
         setState(() {
           _eta = result.duration;
           _distance = result.distance;
-
-          // Dibujar la ruta real
+          final pts = result.polylinePoints.isNotEmpty
+              ? result.polylinePoints
+              : [ambulancePos, userPos];
+          _polylineEpoch++;
           _polylines = {
             Polyline(
-              polylineId: const PolylineId('route'),
-              points: result.polylinePoints,
+              polylineId: PolylineId('route_$_polylineEpoch'),
+              points: pts,
               color: const Color(0xFF652580),
-              width: 5,
+              width: 6,
+              geodesic: true,
             ),
           };
         });
 
-        print('📍 Ruta obtenida: $_distance, ETA: $_eta');
+        print(
+          '📍 Ruta obtenida: $_distance, ETA: $_eta, pts=${result.polylinePoints.length}',
+        );
+      } else {
+        setState(() {
+          _eta = null;
+          _distance = null;
+          _polylineEpoch++;
+          _polylines = {
+            Polyline(
+              polylineId: PolylineId('route_$_polylineEpoch'),
+              points: [ambulancePos, userPos],
+              color: const Color(0xFF652580),
+              width: 6,
+              geodesic: true,
+            ),
+          };
+        });
+        print('📍 Directions sin ruta OK: línea recta ambulancia → cliente');
       }
     } catch (e) {
       print('❌ Error obteniendo ruta: $e');
-      // Si falla, dibujar línea recta
-      if (mounted) {
-        setState(() {
-          _polylines = {
-            Polyline(
-              polylineId: const PolylineId('route'),
-              points: [ambulancePos, LatLng(widget.userLat, widget.userLng)],
-              color: Colors.blue,
-              width: 4,
-            ),
-          };
-        });
+      if (!mounted || gen != _directionsRequestGen) {
+        return;
       }
-    } finally {
-      _isLoadingRoute = false;
+      setState(() {
+        _polylineEpoch++;
+        _polylines = {
+          Polyline(
+            polylineId: PolylineId('route_$_polylineEpoch'),
+            points: [ambulancePos, LatLng(widget.userLat, widget.userLng)],
+            color: Colors.blue,
+            width: 6,
+            geodesic: true,
+          ),
+        };
+      });
     }
   }
 
@@ -277,12 +440,29 @@ class _RequestTrackingPageState extends State<RequestTrackingPage> {
       ),
     );
 
-    _mapController!.animateCamera(CameraUpdate.newLatLngBounds(bounds, 80));
+    _mapController!
+        .animateCamera(CameraUpdate.newLatLngBounds(bounds, 100))
+        .catchError((Object e) {
+      print('⚠️ fitBounds: $e — usando centro intermedio');
+      return _mapController!.moveCamera(
+        CameraUpdate.newLatLngZoom(
+          LatLng(
+            (_ambulancePosition!.latitude + widget.userLat) / 2,
+            (_ambulancePosition!.longitude + widget.userLng) / 2,
+          ),
+          13,
+        ),
+      );
+    });
   }
 
   void _handleStatusUpdate(RequestUpdate update) {
+    final shift = coerceMap(update.requestDetails['shift']);
     setState(() {
-      _currentStatus = update.status;
+      _currentStatus = normalizeServiceRequestStatus(
+        update.status,
+        hasAssignedShift: shift != null,
+      );
       _statusMessage = update.message;
     });
 
@@ -327,7 +507,7 @@ class _RequestTrackingPageState extends State<RequestTrackingPage> {
                 context,
                 'client/rating',
                 arguments: {
-                  'serviceRequestId': widget.requestId,
+                  'serviceRequestId': _effectiveRequestId,
                   'driverName': _driverName,
                   'ambulancePlate': _ambulancePlate,
                 },
@@ -373,7 +553,13 @@ class _RequestTrackingPageState extends State<RequestTrackingPage> {
   }
 
   Future<void> _cancelRequest() async {
-    if (widget.requestId == null) return;
+    final id = _effectiveRequestId;
+    if (id == null) {
+      _showError(
+        'No se encontró el número de solicitud. Abre el seguimiento desde el inicio o recarga.',
+      );
+      return;
+    }
 
     final confirm = await showDialog<bool>(
       context: context,
@@ -405,9 +591,10 @@ class _RequestTrackingPageState extends State<RequestTrackingPage> {
 
     try {
       final repository = sl<ServiceRequestRepository>();
-      await repository.cancelServiceRequest(requestId: widget.requestId!);
+      await repository.cancelServiceRequest(requestId: id);
 
       if (mounted) {
+        context.read<ClientHomeBloc>().add(ClientHomeClearActiveRequestEvent());
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
             content: Text('Solicitud cancelada exitosamente'),
@@ -492,13 +679,8 @@ class _RequestTrackingPageState extends State<RequestTrackingPage> {
 
   @override
   void dispose() {
-    _connectionSub?.cancel();
-    _authSub?.cancel();
-    _assignedSub?.cancel();
-    _locationSub?.cancel();
-    _statusSub?.cancel();
-    _ratingCreatedSub?.cancel();
-    _socketService.disconnect();
+    _hydratePollTimer?.cancel();
+    _cancelTrackingSocketSubs();
     _mapController?.dispose();
     super.dispose();
   }
@@ -532,13 +714,31 @@ class _RequestTrackingPageState extends State<RequestTrackingPage> {
           // Mapa
           Expanded(
             child: GoogleMap(
-              onMapCreated: (controller) => _mapController = controller,
+              key: ValueKey('track_route_$_polylineEpoch'),
+              onMapCreated: (controller) {
+                _mapController = controller;
+                WidgetsBinding.instance.addPostFrameCallback((_) {
+                  if (mounted) {
+                    if (_ambulancePosition != null) {
+                      _fitBounds();
+                    } else {
+                      controller.animateCamera(
+                        CameraUpdate.newLatLngZoom(
+                          LatLng(widget.userLat, widget.userLng),
+                          15,
+                        ),
+                      );
+                    }
+                  }
+                });
+              },
               initialCameraPosition: CameraPosition(
                 target: LatLng(widget.userLat, widget.userLng),
                 zoom: 15,
               ),
-              markers: _markers,
-              polylines: _polylines,
+              markers: Set<Marker>.of(_markers),
+              polylines: Set<Polyline>.of(_polylines),
+              mapType: MapType.normal,
               myLocationEnabled: false,
               zoomControlsEnabled: false,
             ),
@@ -826,8 +1026,8 @@ class _RequestTrackingPageState extends State<RequestTrackingPage> {
   }
 
   bool _canCancel() {
-    // Solo permite cancelar cuando está buscando o recién asignado
-    return _currentStatus == 'SEARCHING' || _currentStatus == 'ASSIGNED';
+    final s = _currentStatus.toUpperCase();
+    return s == 'SEARCHING' || s == 'ASSIGNED';
   }
 
   Widget _buildStatusIcon() {
@@ -908,7 +1108,10 @@ class _RequestTrackingPageState extends State<RequestTrackingPage> {
       'TRAVELLING',
       'COMPLETED',
     ];
-    final currentIndex = steps.indexOf(_currentStatus);
+    var currentIndex = steps.indexOf(_currentStatus);
+    if (currentIndex < 0) {
+      currentIndex = 0;
+    }
 
     return Row(
       children: List.generate(steps.length, (index) {

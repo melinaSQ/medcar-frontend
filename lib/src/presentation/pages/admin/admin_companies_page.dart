@@ -16,7 +16,7 @@ class AdminCompaniesPage extends StatefulWidget {
 }
 
 class _AdminCompaniesPageState extends State<AdminCompaniesPage> {
-  final SocketService _socket = SocketService();
+  final SocketService _socket = sl<SocketService>();
   StreamSubscription<void>? _adminRealtimeSub;
 
   List<Map<String, dynamic>> _items = [];
@@ -47,7 +47,6 @@ class _AdminCompaniesPageState extends State<AdminCompaniesPage> {
   @override
   void dispose() {
     _adminRealtimeSub?.cancel();
-    _socket.disconnect();
     super.dispose();
   }
 

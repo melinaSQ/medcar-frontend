@@ -17,7 +17,7 @@ class AdminUsersPage extends StatefulWidget {
 
 class _AdminUsersPageState extends State<AdminUsersPage> {
   final TextEditingController _search = TextEditingController();
-  final SocketService _socket = SocketService();
+  final SocketService _socket = sl<SocketService>();
   StreamSubscription<void>? _adminRealtimeSub;
 
   List<Map<String, dynamic>> _items = [];
@@ -29,7 +29,6 @@ class _AdminUsersPageState extends State<AdminUsersPage> {
   void dispose() {
     _debounce?.cancel();
     _adminRealtimeSub?.cancel();
-    _socket.disconnect();
     _search.dispose();
     super.dispose();
   }

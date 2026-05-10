@@ -44,7 +44,7 @@ class _CompanyHomeView extends StatefulWidget {
 }
 
 class _CompanyHomeViewState extends State<_CompanyHomeView> {
-  final SocketService _socketService = SocketService();
+  final SocketService _socketService = sl<SocketService>();
   StreamSubscription? _newRequestSub;
   StreamSubscription? _statusUpdateSub;
   StreamSubscription? _requestAssignedSub;
@@ -82,6 +82,7 @@ class _CompanyHomeViewState extends State<_CompanyHomeView> {
     _refreshTimer = Timer.periodic(const Duration(seconds: 10), (timer) {
       if (mounted) {
         _refreshShifts();
+        context.read<CompanyHomeBloc>().add(LoadPendingRequestsEvent());
       }
     });
   }
@@ -189,7 +190,6 @@ class _CompanyHomeViewState extends State<_CompanyHomeView> {
     _requestCanceledSub?.cancel();
     _ratingCreatedSub?.cancel();
     _refreshTimer?.cancel();
-    _socketService.disconnect();
     super.dispose();
   }
 

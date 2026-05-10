@@ -62,6 +62,13 @@ abstract class CompanyAdminRemoteDataSource {
     required String phone,
     required String token,
   });
+
+  /// Actualizar nombre y/o teléfono de la empresa aprobada (COMPANY_ADMIN).
+  Future<Map<String, dynamic>> updateMyCompany({
+    required String name,
+    required String phone,
+    required String token,
+  });
 }
 
 class CompanyAdminRemoteDataSourceImpl implements CompanyAdminRemoteDataSource {
@@ -370,6 +377,39 @@ class CompanyAdminRemoteDataSourceImpl implements CompanyAdminRemoteDataSource {
     } catch (e) {
       if (e is Exception) rethrow;
       throw Exception('Error al registrar empresa');
+    }
+  }
+
+  @override
+  Future<Map<String, dynamic>> updateMyCompany({
+    required String name,
+    required String phone,
+    required String token,
+  }) async {
+    final response = await client.patch(
+      Uri.parse('$apiUrl/companies/me'),
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer $token',
+      },
+      body: json.encode({
+        'name': name.trim(),
+        'phone': phone.trim(),
+      }),
+    );
+    if (response.statusCode == 200) {
+      return Map<String, dynamic>.from(json.decode(response.body) as Map);
+    }
+    try {
+      final errorBody = json.decode(response.body);
+      final msg = errorBody['message'];
+      if (msg is List && msg.isNotEmpty) {
+        throw Exception(msg.first.toString());
+      }
+      throw Exception(msg?.toString() ?? 'Error al actualizar la empresa');
+    } catch (e) {
+      if (e is Exception) rethrow;
+      throw Exception('Error al actualizar la empresa');
     }
   }
 }

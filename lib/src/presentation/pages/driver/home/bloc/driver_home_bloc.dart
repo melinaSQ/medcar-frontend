@@ -5,6 +5,7 @@
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:medcar_frontend/src/data/datasources/remote/driver_remote_datasource.dart';
 import 'package:medcar_frontend/src/domain/repositories/auth_repository.dart';
+import 'package:medcar_frontend/src/presentation/pages/driver/home/mission_payload_utils.dart';
 import 'driver_home_event.dart';
 import 'driver_home_state.dart';
 
@@ -15,6 +16,7 @@ class DriverHomeBloc extends Bloc<DriverHomeEvent, DriverHomeState> {
   DriverHomeBloc({required this.authRepository, required this.driverDataSource})
     : super(DriverHomeState()) {
     on<DriverHomeInitEvent>(_onInit);
+    on<RefreshActiveShiftEvent>(_onRefreshActiveShift);
     on<StartShiftEvent>(_onStartShift);
     on<EndShiftEvent>(_onEndShift);
     on<UpdateStatusEvent>(_onUpdateStatus);
@@ -48,6 +50,60 @@ class DriverHomeBloc extends Bloc<DriverHomeEvent, DriverHomeState> {
     );
   }
 
+  Future<void> _onRefreshActiveShift(
+    RefreshActiveShiftEvent event,
+    Emitter<DriverHomeState> emit,
+  ) async {
+    if (state.status == DriverHomeStatus.loading ||
+        state.status == DriverHomeStatus.updating) {
+      return;
+    }
+    try {
+      final session = await authRepository.getUserSession();
+      if (session == null) return;
+
+      final activeShift = await driverDataSource.getMyActiveShift(
+        token: session.accessToken,
+      );
+
+      if (activeShift == null) {
+        emit(
+          state.copyWith(
+            status: DriverHomeStatus.noShift,
+            clearShift: true,
+            clearMission: true,
+          ),
+        );
+        return;
+      }
+
+      final rawMission = activeShift['activeMission'];
+      final Map<String, dynamic>? activeMission = rawMission == null
+          ? null
+          : coerceMap(rawMission);
+
+      if (activeMission != null) {
+        emit(
+          state.copyWith(
+            status: DriverHomeStatus.hasMission,
+            activeShift: activeShift,
+            currentMission: activeMission,
+          ),
+        );
+      } else {
+        emit(
+          state.copyWith(
+            status: DriverHomeStatus.hasShift,
+            activeShift: activeShift,
+            clearMission: true,
+          ),
+        );
+      }
+    } catch (e) {
+      print('RefreshActiveShift: $e');
+    }
+  }
+
   Future<void> _onInit(
     DriverHomeInitEvent event,
     Emitter<DriverHomeState> emit,
@@ -66,7 +122,7 @@ class DriverHomeBloc extends Bloc<DriverHomeEvent, DriverHomeState> {
 
         if (activeShift != null) {
           // Hay turno activo - verificar si tiene misión
-          final activeMission = activeShift['activeMission'];
+          final activeMission = coerceMap(activeShift['activeMission']);
 
           if (activeMission != null) {
             // Tiene turno Y misión activa
@@ -179,9 +235,8 @@ class DriverHomeBloc extends Bloc<DriverHomeEvent, DriverHomeState> {
       if (session != null) {
         // El ID puede venir directo o dentro de requestDetails
         final mission = state.currentMission!;
-        final requestDetails =
-            mission['requestDetails'] as Map<String, dynamic>?;
-        final requestId = requestDetails?['id'] ?? mission['id'];
+        final details = missionRequestDetails(mission);
+        final requestId = details['id'] ?? mission['id'];
 
         if (requestId == null) {
           throw Exception('No se encontró el ID de la solicitud');
@@ -226,12 +281,30 @@ class DriverHomeBloc extends Bloc<DriverHomeEvent, DriverHomeState> {
     LogoutEvent event,
     Emitter<DriverHomeState> emit,
   ) async {
+    if (state.currentMission != null) {
+      emit(
+        state.copyWith(
+          errorMessage:
+              'No puedes cerrar sesión con una emergencia activa. Complétala primero.',
+        ),
+      );
+      return;
+    }
+    if (state.activeShift != null) {
+      emit(
+        state.copyWith(
+          errorMessage:
+              'Debes finalizar tu turno antes de cerrar sesión.',
+        ),
+      );
+      return;
+    }
     await authRepository.logout();
   }
 
   // Método para recibir nueva misión desde WebSocket
   void receiveMission(Map<String, dynamic> mission) {
-    add(_ReceiveMissionEvent(mission: mission));
+    add(_ReceiveMissionEvent(mission: Map<String, dynamic>.from(mission)));
   }
 }
 

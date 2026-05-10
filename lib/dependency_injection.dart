@@ -19,6 +19,7 @@ import 'package:medcar_frontend/src/domain/usecases/register_usecase.dart';
 import 'package:medcar_frontend/src/presentation/pages/auth/login/bloc/login_bloc.dart';
 import 'package:medcar_frontend/src/presentation/pages/auth/register/bloc/register_bloc.dart';
 import 'package:medcar_frontend/src/presentation/pages/client/home/bloc/client_home_bloc.dart';
+import 'package:medcar_frontend/src/data/services/socket_service.dart';
 
 final sl = GetIt.instance;
 
@@ -27,6 +28,10 @@ Future<void> init() async {
   sl.registerLazySingleton<http.Client>(
     () => AuthAwareHttpClient(http.Client()),
   );
+
+  /// Una sola conexión WebSocket por sesión: evita perder `ambulance_location_updated`
+  /// al cerrar una pantalla que hacía `disconnect()` en el `dispose`.
+  sl.registerLazySingleton<SocketService>(() => SocketService());
 
   // === DATA SOURCES (dependen de Externals) ===
   sl.registerLazySingleton<AuthRemoteDataSource>(
@@ -73,5 +78,10 @@ Future<void> init() async {
   // === BLOCS (dependen de Use Cases/Repositories) ===
   sl.registerFactory(() => LoginBloc(loginUseCase: sl()));
   sl.registerFactory(() => RegisterBloc(registerUseCase: sl()));
-  sl.registerFactory(() => ClientHomeBloc(authRepository: sl()));
+  sl.registerFactory(
+    () => ClientHomeBloc(
+      authRepository: sl(),
+      serviceRequestDataSource: sl(),
+    ),
+  );
 }

@@ -4,6 +4,9 @@ abstract class DriverHomeEvent {}
 
 class DriverHomeInitEvent extends DriverHomeEvent {}
 
+/// Recarga turno y misión activos desde la API (p. ej. sondeo o tras reconectar).
+class RefreshActiveShiftEvent extends DriverHomeEvent {}
+
 class StartShiftEvent extends DriverHomeEvent {
   final String plate;
   final String code;

@@ -30,12 +30,14 @@ class DirectionsService {
       if (response.statusCode == 200) {
         final data = json.decode(response.body);
         
-        if (data['status'] == 'OK' && data['routes'].isNotEmpty) {
+        final status = data['status']?.toString() ?? '';
+        if (status == 'OK' && data['routes'] != null && (data['routes'] as List).isNotEmpty) {
           final route = data['routes'][0];
           final leg = route['legs'][0];
           
           // Decodificar la polyline
-          final polylinePoints = _decodePolyline(route['overview_polyline']['points']);
+          final encoded = route['overview_polyline']?['points']?.toString() ?? '';
+          final polylinePoints = encoded.isEmpty ? <LatLng>[] : _decodePolyline(encoded);
           
           return DirectionsResult(
             polylinePoints: polylinePoints,
@@ -45,9 +47,12 @@ class DirectionsService {
             durationValue: leg['duration']['value'],
           );
         }
+        print(
+          '❌ Directions status=$status err=${data['error_message']} body=${response.body.length > 200 ? response.body.substring(0, 200) : response.body}',
+        );
       }
       
-      print('❌ Error en Directions API: ${response.body}');
+      print('❌ Error HTTP Directions: ${response.statusCode} ${response.body}');
       return null;
     } catch (e) {
       print('❌ Error obteniendo direcciones: $e');

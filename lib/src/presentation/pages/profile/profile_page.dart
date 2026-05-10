@@ -31,6 +31,11 @@ class _ProfilePageState extends State<ProfilePage>
   final _newPasswordController = TextEditingController();
   final _confirmPasswordController = TextEditingController();
 
+  /// Perfil solo-empresa (admin de empresa aprobado).
+  final _companyNameController = TextEditingController();
+  final _companyRucController = TextEditingController();
+  final _companyPhoneEditController = TextEditingController();
+
   bool _isLoading = false;
   bool _isEditing = false;
   bool _isChangingPassword = false;
@@ -70,7 +75,6 @@ class _ProfilePageState extends State<ProfilePage>
   @override
   void dispose() {
     _profileSocketSub?.cancel();
-    _profileSocket?.disconnect();
     appRouteObserver.unsubscribe(this);
     WidgetsBinding.instance.removeObserver(this);
     _nameController.dispose();
@@ -82,6 +86,9 @@ class _ProfilePageState extends State<ProfilePage>
     _currentPasswordController.dispose();
     _newPasswordController.dispose();
     _confirmPasswordController.dispose();
+    _companyNameController.dispose();
+    _companyRucController.dispose();
+    _companyPhoneEditController.dispose();
     super.dispose();
   }
 
@@ -101,7 +108,7 @@ class _ProfilePageState extends State<ProfilePage>
   Future<void> _listenProfileSocket() async {
     final session = await di.sl<AuthRepository>().getUserSession();
     if (!mounted || session == null) return;
-    _profileSocket = SocketService();
+    _profileSocket = di.sl<SocketService>();
     _profileSocket!.connect(session.accessToken);
     _profileSocketSub = _profileSocket!.userProfileUpdated.listen((_) {
       if (mounted) {
@@ -133,12 +140,19 @@ class _ProfilePageState extends State<ProfilePage>
           ru.contains('ADMIN') ||
           ru.contains('SYSTEM_ADMIN');
       Map<String, dynamic>? co;
-      if (!skipCompany) {
+      final loadCompanyRecord = !skipCompany || ru.contains('COMPANY_ADMIN');
+      if (loadCompanyRecord) {
         try {
           co = await di.sl<CompanyAdminRemoteDataSource>().getMyCompany(
             token: session.accessToken,
           );
         } catch (_) {}
+      }
+      final isCompanyAdmin = ru.contains('COMPANY_ADMIN');
+      if (co != null && isCompanyAdmin) {
+        _companyNameController.text = (co['name'] ?? '').toString();
+        _companyRucController.text = (co['ruc'] ?? '').toString();
+        _companyPhoneEditController.text = (co['phone'] ?? '').toString();
       }
       setState(() {
         _nameController.text = session.user.name;
@@ -157,7 +171,20 @@ class _ProfilePageState extends State<ProfilePage>
         _showCompanyRegistrationTile = false;
         _accountRoles = [];
       });
+      _companyNameController.clear();
+      _companyRucController.clear();
+      _companyPhoneEditController.clear();
     }
+  }
+
+  /// Solo datos de empresa: admin de empresa con solicitud aprobada y sin rol de administrador del sistema.
+  bool get _companyOnlyProfileMode {
+    final ru = _accountRoles.map((e) => e.toUpperCase()).toList();
+    if (!ru.contains('COMPANY_ADMIN')) return false;
+    if (ru.contains('SYSTEM_ADMIN') || ru.contains('ADMIN')) return false;
+    final co = _myCompanyReg;
+    if (co == null) return false;
+    return co['status']?.toString().toUpperCase() == 'APPROVED';
   }
 
   String _roleLabelEs(String role) {
@@ -231,6 +258,59 @@ class _ProfilePageState extends State<ProfilePage>
             backgroundColor: Colors.green,
           ),
         );
+        setState(() {
+          _isEditing = false;
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              'Error: ${e.toString().replaceAll('Exception: ', '')}',
+            ),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+        });
+      }
+    }
+  }
+
+  Future<void> _saveCompanyProfile() async {
+    if (!_formKey.currentState!.validate()) {
+      return;
+    }
+
+    setState(() {
+      _isLoading = true;
+    });
+
+    try {
+      final authRepo = di.sl<AuthRepository>();
+      final session = await authRepo.getUserSession();
+      if (session == null) {
+        throw Exception('Sesión no válida');
+      }
+      await di.sl<CompanyAdminRemoteDataSource>().updateMyCompany(
+        name: _companyNameController.text.trim(),
+        phone: _companyPhoneEditController.text.trim(),
+        token: session.accessToken,
+      );
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('✅ Datos de la empresa actualizados'),
+            backgroundColor: Colors.green,
+          ),
+        );
+        await _syncProfileFromServer();
         setState(() {
           _isEditing = false;
         });
@@ -380,6 +460,10 @@ class _ProfilePageState extends State<ProfilePage>
 
   @override
   Widget build(BuildContext context) {
+    if (_companyOnlyProfileMode) {
+      return _buildCompanyOnlyProfile(context);
+    }
+
     return Scaffold(
       appBar: AppBar(
         title: const Text('Mi Perfil'),
@@ -904,6 +988,159 @@ class _ProfilePageState extends State<ProfilePage>
                       ),
                     ],
                     const SizedBox(height: 32),
+                  ],
+                ),
+              ),
+            ),
+    );
+  }
+
+  Widget _buildCompanyOnlyProfile(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Perfil de la empresa'),
+        backgroundColor: const Color(0xFF652580),
+        iconTheme: const IconThemeData(color: Colors.white),
+        actions: [
+          if (!_isEditing)
+            IconButton(
+              icon: const Icon(Icons.edit),
+              onPressed: () => setState(() => _isEditing = true),
+              tooltip: 'Editar',
+            )
+          else
+            IconButton(
+              icon: const Icon(Icons.close),
+              onPressed: () {
+                _syncProfileFromServer();
+                setState(() => _isEditing = false);
+              },
+              tooltip: 'Cancelar',
+            ),
+        ],
+      ),
+      body: _isLoading && _isEditing
+          ? const Center(child: CircularProgressIndicator())
+          : SingleChildScrollView(
+              padding: const EdgeInsets.all(16),
+              child: Form(
+                key: _formKey,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    const SizedBox(height: 20),
+                    Center(
+                      child: CircleAvatar(
+                        radius: 60,
+                        backgroundColor: Colors.grey[300],
+                        child: Icon(
+                          Icons.business,
+                          size: 60,
+                          color: Colors.grey.shade700,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    Text(
+                      'Administras esta empresa. Aquí solo se muestran y editan sus datos.',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        fontSize: 13,
+                        color: Colors.grey.shade700,
+                      ),
+                    ),
+                    const SizedBox(height: 28),
+                    TextFormField(
+                      controller: _companyNameController,
+                      enabled: _isEditing,
+                      decoration: InputDecoration(
+                        labelText: 'Nombre de la empresa',
+                        prefixIcon: const Icon(Icons.business),
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        filled: !_isEditing,
+                        fillColor: _isEditing ? null : Colors.grey[100],
+                      ),
+                      validator: (v) {
+                        if (v == null || v.trim().isEmpty) {
+                          return 'Requerido';
+                        }
+                        return null;
+                      },
+                    ),
+                    const SizedBox(height: 16),
+                    TextFormField(
+                      controller: _companyRucController,
+                      enabled: false,
+                      decoration: InputDecoration(
+                        labelText: 'RUC / NIT',
+                        prefixIcon: const Icon(Icons.numbers),
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        filled: true,
+                        fillColor: Colors.grey[200],
+                        helperText:
+                            'El RUC no se puede modificar desde la app',
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    TextFormField(
+                      controller: _companyPhoneEditController,
+                      enabled: _isEditing,
+                      decoration: InputDecoration(
+                        labelText: 'Teléfono de la empresa',
+                        prefixIcon: const Icon(Icons.phone),
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        filled: !_isEditing,
+                        fillColor: _isEditing ? null : Colors.grey[100],
+                      ),
+                      keyboardType: TextInputType.phone,
+                      validator: (v) {
+                        if (v == null || v.trim().isEmpty) {
+                          return 'Requerido';
+                        }
+                        if (v.trim().length < 7) {
+                          return 'Al menos 7 dígitos';
+                        }
+                        return null;
+                      },
+                    ),
+                    const SizedBox(height: 32),
+                    if (_isEditing)
+                      ElevatedButton(
+                        onPressed: _isLoading ? null : _saveCompanyProfile,
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: const Color(0xFF652580),
+                          padding: const EdgeInsets.symmetric(vertical: 16),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                        ),
+                        child: _isLoading
+                            ? const SizedBox(
+                                height: 20,
+                                width: 20,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                  valueColor: AlwaysStoppedAnimation<Color>(
+                                    Colors.white,
+                                  ),
+                                ),
+                              )
+                            : const Text(
+                                'Guardar cambios',
+                                style: TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                      ),
+                    const SizedBox(height: 24),
                   ],
                 ),
               ),

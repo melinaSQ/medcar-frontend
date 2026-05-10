@@ -16,6 +16,7 @@ import 'package:medcar_frontend/src/domain/repositories/auth_repository.dart';
 import 'bloc/driver_home_bloc.dart';
 import 'bloc/driver_home_event.dart';
 import 'bloc/driver_home_state.dart';
+import 'mission_payload_utils.dart';
 
 class DriverHomePage extends StatelessWidget {
   const DriverHomePage({super.key});
@@ -40,7 +41,7 @@ class _DriverHomeView extends StatefulWidget {
 }
 
 class _DriverHomeViewState extends State<_DriverHomeView> {
-  final SocketService _socketService = SocketService();
+  final SocketService _socketService = sl<SocketService>();
   final TextEditingController _plateController = TextEditingController();
   final TextEditingController _codeController = TextEditingController();
 
@@ -51,7 +52,9 @@ class _DriverHomeViewState extends State<_DriverHomeView> {
   StreamSubscription? _statusUpdateSub;
   StreamSubscription? _ratingCreatedSub;
   StreamSubscription<void>? _profileUpdatedSub;
+  Timer? _shiftPollTimer;
   int? _currentShiftId;
+  int? _lastRouteSyncMissionId;
 
   // Flag para evitar procesar cancelación múltiples veces
   bool _isProcessingCancellation = false;
@@ -70,7 +73,27 @@ class _DriverHomeViewState extends State<_DriverHomeView> {
   void initState() {
     super.initState();
     _initWebSocket();
+    _startPollingActiveShift();
     _loadDriverRating();
+  }
+
+  void _startPollingActiveShift() {
+    _shiftPollTimer?.cancel();
+    _shiftPollTimer = Timer.periodic(const Duration(seconds: 10), (_) {
+      if (!mounted) return;
+      final bloc = context.read<DriverHomeBloc>();
+      final s = bloc.state;
+      if (s.status == DriverHomeStatus.loading ||
+          s.status == DriverHomeStatus.updating) {
+        return;
+      }
+      if (s.status == DriverHomeStatus.noShift ||
+          s.status == DriverHomeStatus.initial ||
+          s.status == DriverHomeStatus.error) {
+        return;
+      }
+      bloc.add(RefreshActiveShiftEvent());
+    });
   }
 
   Future<void> _loadDriverRating() async {
@@ -113,28 +136,12 @@ class _DriverHomeViewState extends State<_DriverHomeView> {
       // Escuchar nuevas misiones
       _missionSub = _socketService.onNewMission.listen((mission) async {
         if (mounted) {
-          // Limpiar datos de misión anterior
           _clearMissionData();
 
-          context.read<DriverHomeBloc>().receiveMission(mission);
-          _showMissionDialog(mission);
-
-          // Obtener ubicación actual y ruta inmediatamente
-          try {
-            final position = await Geolocator.getCurrentPosition(
-              desiredAccuracy: LocationAccuracy.high,
-            );
-            if (mounted) {
-              setState(() {
-                _driverPosition = LatLng(position.latitude, position.longitude);
-              });
-              // Pequeño delay para asegurar que el BLoC tenga la misión
-              await Future.delayed(const Duration(milliseconds: 100));
-              _updateRouteToClient();
-            }
-          } catch (e) {
-            print('❌ Error obteniendo ubicación inicial: $e');
-          }
+          final normalized = coerceMap(mission) ?? <String, dynamic>{};
+          context.read<DriverHomeBloc>().receiveMission(normalized);
+          _showMissionDialog(normalized);
+          // La ruta se traza en el listener del BLoC cuando el estado ya tiene la misión.
         }
       });
 
@@ -238,10 +245,10 @@ class _DriverHomeViewState extends State<_DriverHomeView> {
   }
 
   void _showMissionDialog(Map<String, dynamic> mission) {
-    final requestDetails = mission['requestDetails'] as Map<String, dynamic>?;
-    if (requestDetails == null) return;
+    final requestDetails = missionRequestDetails(mission);
+    if (requestDetails.isEmpty) return;
 
-    final client = requestDetails['client'] as Map<String, dynamic>?;
+    final client = coerceMap(requestDetails['client']);
     final clientName = client != null
         ? '${client['name']} ${client['lastname']}'
         : 'Cliente';
@@ -333,9 +340,11 @@ class _DriverHomeViewState extends State<_DriverHomeView> {
 
     print('✅ Permisos de ubicación concedidos');
 
-    // Enviar ubicación cada 5 segundos
+    await _sendLocationImmediate();
+
+    // Enviar ubicación cada 3 segundos para seguimiento más fluido del cliente
     _locationTimer?.cancel();
-    _locationTimer = Timer.periodic(const Duration(seconds: 5), (timer) async {
+    _locationTimer = Timer.periodic(const Duration(seconds: 3), (timer) async {
       try {
         final position = await Geolocator.getCurrentPosition(
           desiredAccuracy: LocationAccuracy.high,
@@ -362,6 +371,60 @@ class _DriverHomeViewState extends State<_DriverHomeView> {
     });
   }
 
+  Future<void> _sendLocationImmediate() async {
+    if (_currentShiftId == null || !mounted) return;
+    try {
+      final position = await Geolocator.getCurrentPosition(
+        desiredAccuracy: LocationAccuracy.high,
+      );
+      if (!mounted || _currentShiftId == null) return;
+      _socketService.sendLocation(
+        shiftId: _currentShiftId!,
+        lat: position.latitude,
+        lon: position.longitude,
+      );
+      setState(() {
+        _driverPosition = LatLng(position.latitude, position.longitude);
+      });
+      await _updateRouteToClient();
+    } catch (e) {
+      print('❌ Envío inmediato de ubicación / ruta: $e');
+    }
+  }
+
+  int? _missionDbId(Map<String, dynamic>? m) {
+    if (m == null) return null;
+    final raw = coerceMap(m) ?? m;
+    final d = missionRequestDetails(raw);
+    final id = d['id'];
+    if (id is int) return id;
+    return int.tryParse(id?.toString() ?? '');
+  }
+
+  Future<void> _ensureRouteToClientSynced() async {
+    if (!mounted) return;
+    final state = context.read<DriverHomeBloc>().state;
+    if (state.currentMission == null ||
+        state.status != DriverHomeStatus.hasMission) {
+      return;
+    }
+    if (_driverPosition == null) {
+      try {
+        final position = await Geolocator.getCurrentPosition(
+          desiredAccuracy: LocationAccuracy.high,
+        );
+        if (!mounted) return;
+        setState(() {
+          _driverPosition = LatLng(position.latitude, position.longitude);
+        });
+      } catch (e) {
+        print('❌ GPS para trazar ruta a cliente: $e');
+        return;
+      }
+    }
+    await _updateRouteToClient();
+  }
+
   Future<void> _updateRouteToClient() async {
     if (_driverPosition == null) {
       print('❌ _updateRouteToClient: driverPosition es null');
@@ -378,11 +441,9 @@ class _DriverHomeViewState extends State<_DriverHomeView> {
 
     // Los datos pueden venir directos o dentro de requestDetails (desde WebSocket)
     final mission = state.currentMission!;
-    final requestDetails =
-        mission['requestDetails'] as Map<String, dynamic>? ?? mission;
+    final requestDetails = missionRequestDetails(mission);
 
-    final originLocation =
-        requestDetails['originLocation'] as Map<String, dynamic>?;
+    final originLocation = coerceMap(requestDetails['originLocation']);
     if (originLocation == null) {
       print('❌ _updateRouteToClient: originLocation es null');
       return;
@@ -448,7 +509,7 @@ class _DriverHomeViewState extends State<_DriverHomeView> {
     _statusUpdateSub?.cancel();
     _ratingCreatedSub?.cancel();
     _profileUpdatedSub?.cancel();
-    _socketService.disconnect();
+    _shiftPollTimer?.cancel();
     _mapController?.dispose();
     super.dispose();
   }
@@ -465,22 +526,35 @@ class _DriverHomeViewState extends State<_DriverHomeView> {
             ),
           );
         }
-        // Obtener shiftId del turno activo o de la misión
         if (state.activeShift != null) {
           _currentShiftId = state.activeShift!['id'];
           print('🔑 ShiftId from activeShift: $_currentShiftId');
         }
-        // También puede venir del shift dentro de la misión
         if (state.currentMission != null) {
           print('📋 Mission data: ${state.currentMission}');
-          final requestDetails =
-              state.currentMission!['requestDetails'] as Map<String, dynamic>?;
+          final cm =
+              coerceMap(state.currentMission) ?? state.currentMission!;
+          final details = missionRequestDetails(cm);
           final shiftData =
-              requestDetails?['shift'] ?? state.currentMission!['shift'];
-          if (shiftData != null && shiftData is Map<String, dynamic>) {
+              coerceMap(details['shift']) ?? coerceMap(cm['shift']);
+          if (shiftData != null) {
             _currentShiftId = shiftData['id'];
             print('🔑 ShiftId from mission: $_currentShiftId');
           }
+
+          final mid = _missionDbId(cm);
+          if (state.status == DriverHomeStatus.hasMission && mid != null) {
+            if (mid != _lastRouteSyncMissionId) {
+              _lastRouteSyncMissionId = mid;
+              WidgetsBinding.instance.addPostFrameCallback((_) {
+                if (mounted) {
+                  _ensureRouteToClientSynced();
+                }
+              });
+            }
+          }
+        } else {
+          _lastRouteSyncMissionId = null;
         }
       },
       builder: (context, state) {
@@ -558,7 +632,17 @@ class _DriverHomeViewState extends State<_DriverHomeView> {
               ),
               IconButton(
                 icon: const Icon(Icons.logout, color: Colors.white),
+                tooltip: 'Cerrar sesión',
                 onPressed: () {
+                  final driverState = context.read<DriverHomeBloc>().state;
+                  if (driverState.currentMission != null) {
+                    _showCannotLogoutWithActiveMissionDialog();
+                    return;
+                  }
+                  if (driverState.activeShift != null) {
+                    _showEndShiftBeforeLogoutDialog();
+                    return;
+                  }
                   context.read<DriverHomeBloc>().add(LogoutEvent());
                   Navigator.pushNamedAndRemoveUntil(
                     context,
@@ -722,7 +806,7 @@ class _DriverHomeViewState extends State<_DriverHomeView> {
   }
 
   Widget _buildHasShiftView(BuildContext context, DriverHomeState state) {
-    final ambulance = state.activeShift?['ambulance'] as Map<String, dynamic>?;
+    final ambulance = coerceMap(state.activeShift?['ambulance']);
     final plate = ambulance?['plate'] ?? 'N/A';
 
     return Center(
@@ -813,11 +897,9 @@ class _DriverHomeViewState extends State<_DriverHomeView> {
     final mission = state.currentMission;
     if (mission == null) return _buildHasShiftView(context, state);
 
-    // Los datos pueden venir directos o dentro de requestDetails (desde WebSocket)
-    final requestDetails =
-        mission['requestDetails'] as Map<String, dynamic>? ?? mission;
+    final requestDetails = missionRequestDetails(mission);
 
-    final client = requestDetails['client'] as Map<String, dynamic>?;
+    final client = coerceMap(requestDetails['client']);
     final clientName = client != null
         ? '${client['name']} ${client['lastname']}'
         : 'Cliente';
@@ -826,7 +908,7 @@ class _DriverHomeViewState extends State<_DriverHomeView> {
     final description =
         requestDetails['originDescription'] ?? 'Sin descripción';
     final status = requestDetails['status'] ?? 'ASSIGNED';
-    final location = requestDetails['originLocation'] as Map<String, dynamic>?;
+    final location = coerceMap(requestDetails['originLocation']);
     final coordinates = location?['coordinates'] as List<dynamic>?;
 
     return Column(
@@ -1152,6 +1234,66 @@ class _DriverHomeViewState extends State<_DriverHomeView> {
           ElevatedButton(
             onPressed: () => Navigator.pop(context),
             child: const Text('Entendido'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showCannotLogoutWithActiveMissionDialog() {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Row(
+          children: [
+            Icon(Icons.warning_amber, color: Colors.red),
+            SizedBox(width: 10),
+            Text('Emergencia activa'),
+          ],
+        ),
+        content: const Text(
+          'No puedes cerrar sesión mientras tienes una emergencia en curso.\n\n'
+          'Completa o cancela el servicio antes de salir.',
+        ),
+        actions: [
+          ElevatedButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Entendido'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showEndShiftBeforeLogoutDialog() {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Row(
+          children: [
+            Icon(Icons.info_outline, color: Colors.orange),
+            SizedBox(width: 10),
+            Text('Turno activo'),
+          ],
+        ),
+        content: const Text(
+          'Debes finalizar tu turno antes de cerrar sesión.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancelar'),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              Navigator.pop(context);
+              _showEndShiftDialog(context);
+            },
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.orange),
+            child: const Text(
+              'Finalizar turno',
+              style: TextStyle(color: Colors.white),
+            ),
           ),
         ],
       ),

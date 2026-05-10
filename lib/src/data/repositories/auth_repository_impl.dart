@@ -5,9 +5,11 @@ import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../../domain/entities/auth_response_entity.dart';
 import '../../domain/repositories/auth_repository.dart';
+import 'package:medcar_frontend/dependency_injection.dart';
 import '../datasources/remote/auth_remote_datasource.dart';
 import '../models/user_model.dart';
 import '../services/notification_service.dart';
+import '../services/socket_service.dart';
 
 const String _sessionKey = 'user_session';
 
@@ -85,6 +87,9 @@ class AuthRepositoryImpl implements AuthRepository {
 
   @override
   Future<void> logout() async {
+    if (sl.isRegistered<SocketService>()) {
+      sl<SocketService>().disconnect();
+    }
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove(_sessionKey);
   }

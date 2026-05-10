@@ -120,11 +120,18 @@ class MyApp extends StatelessWidget {
           // Ruta con parámetros para tracking
           if (settings.name == 'client/tracking') {
             final args = settings.arguments as Map<String, dynamic>;
+            double toD(dynamic v) =>
+                v is num ? v.toDouble() : double.tryParse(v?.toString() ?? '') ?? 0.0;
+            int? toReqId(dynamic v) => v == null
+                ? null
+                : v is int
+                    ? v
+                    : int.tryParse(v.toString());
             return MaterialPageRoute(
               builder: (context) => RequestTrackingPage(
-                userLat: args['userLat'],
-                userLng: args['userLng'],
-                requestId: args['requestId'],
+                userLat: toD(args['userLat']),
+                userLng: toD(args['userLng']),
+                requestId: toReqId(args['requestId']),
               ),
             );
           }

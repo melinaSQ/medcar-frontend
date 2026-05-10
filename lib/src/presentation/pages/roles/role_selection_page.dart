@@ -44,7 +44,6 @@ class _RoleSelectionPageState extends State<RoleSelectionPage>
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     _profileSocketSub?.cancel();
-    _profileSocket?.disconnect();
     super.dispose();
   }
 
@@ -58,7 +57,7 @@ class _RoleSelectionPageState extends State<RoleSelectionPage>
   Future<void> _listenProfileSocket() async {
     final session = await sl<AuthRepository>().getUserSession();
     if (!mounted || session == null) return;
-    _profileSocket ??= SocketService();
+    _profileSocket ??= sl<SocketService>();
     _profileSocket!.connect(session.accessToken);
     await _profileSocketSub?.cancel();
     _profileSocketSub = _profileSocket!.userProfileUpdated.listen((_) {

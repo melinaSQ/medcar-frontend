@@ -20,7 +20,7 @@ class _AdminContactChangeRequestsPageState
     extends State<AdminContactChangeRequestsPage> {
   final TextEditingController _search = TextEditingController();
   Timer? _debounce;
-  final SocketService _socket = SocketService();
+  final SocketService _socket = sl<SocketService>();
   StreamSubscription<void>? _adminRealtimeSub;
 
   List<Map<String, dynamic>> _items = [];
@@ -54,7 +54,6 @@ class _AdminContactChangeRequestsPageState
   void dispose() {
     _debounce?.cancel();
     _adminRealtimeSub?.cancel();
-    _socket.disconnect();
     _search.dispose();
     super.dispose();
   }

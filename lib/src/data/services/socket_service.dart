@@ -3,7 +3,6 @@
 // ignore_for_file: avoid_print
 
 import 'dart:async';
-import 'dart:convert';
 import 'package:socket_io_client/socket_io_client.dart' as io;
 import 'package:medcar_frontend/src/data/datasources/remote/auth_remote_datasource.dart';
 
@@ -21,12 +20,36 @@ class AmbulanceLocation {
     required this.timestamp,
   });
 
+  static double? _readDouble(dynamic v) {
+    if (v == null) return null;
+    if (v is num) return v.toDouble();
+    if (v is String) return double.tryParse(v);
+    return null;
+  }
+
+  static int _readInt(dynamic v) {
+    if (v == null) return 0;
+    if (v is int) return v;
+    if (v is num) return v.toInt();
+    return int.tryParse(v.toString()) ?? 0;
+  }
+
   factory AmbulanceLocation.fromJson(Map<String, dynamic> json) {
+    final lat = _readDouble(json['lat']) ??
+        _readDouble(json['latitude']);
+    final lon = _readDouble(json['lon']) ??
+        _readDouble(json['longitude']) ??
+        _readDouble(json['lng']);
+    if (lat == null || lon == null) {
+      throw FormatException(
+        'ambulance_location_updated sin lat/lon válidos: $json',
+      );
+    }
     return AmbulanceLocation(
-      shiftId: json['shiftId'] ?? 0,
-      lat: (json['lat'] as num?)?.toDouble() ?? 0.0,
-      lon: (json['lon'] as num?)?.toDouble() ?? 0.0,
-      timestamp: json['timestamp'] ?? '',
+      shiftId: _readInt(json['shiftId']),
+      lat: lat,
+      lon: lon,
+      timestamp: json['timestamp']?.toString() ?? '',
     );
   }
 }
@@ -38,13 +61,29 @@ class RequestUpdate {
   RequestUpdate({required this.message, required this.requestDetails});
 
   factory RequestUpdate.fromJson(Map<String, dynamic> json) {
+    final rawDetails = json['requestDetails'];
+    Map<String, dynamic> details = {};
+    if (rawDetails is Map<String, dynamic>) {
+      details = rawDetails;
+    } else if (rawDetails is Map) {
+      details = Map<String, dynamic>.from(rawDetails);
+    }
     return RequestUpdate(
-      message: json['message'] ?? '',
-      requestDetails: json['requestDetails'] ?? {},
+      message: json['message']?.toString() ?? '',
+      requestDetails: details,
     );
   }
 
   String get status => requestDetails['status'] ?? 'UNKNOWN';
+}
+
+/// Socket.IO puede entregar `Map<dynamic, dynamic>`; el cast directo a
+/// `Map<String, dynamic>` falla y se pierden eventos (p. ej. nuevas solicitudes).
+Map<String, dynamic>? _coerceSocketMap(dynamic data) {
+  if (data == null) return null;
+  if (data is Map<String, dynamic>) return data;
+  if (data is Map) return Map<String, dynamic>.from(data);
+  return null;
 }
 
 class SocketService {
@@ -99,10 +138,9 @@ class SocketService {
   /// Conectar al servidor WebSocket
   void connect(String token) {
     if (_socket != null && _isConnected) {
-      // Ya está conectado, solo autenticar de nuevo si es necesario
-      if (!_isAuthenticated) {
-        _authenticate(token);
-      }
+      // Volver a autenticar siempre: asegura `user_<id>` y salas correctas tras
+      // cambiar de pantalla / token refrescado (antes se omitía y el cliente no recibía eventos).
+      _authenticate(token);
       return;
     }
 
@@ -157,8 +195,13 @@ class SocketService {
     // Evento: Solicitud asignada
     _socket!.on('request_assigned', (data) {
       print('🚑 Solicitud asignada: $data');
+      final map = _coerceSocketMap(data);
+      if (map == null) {
+        print('Error parseando request_assigned: formato inesperado');
+        return;
+      }
       try {
-        final update = RequestUpdate.fromJson(data as Map<String, dynamic>);
+        final update = RequestUpdate.fromJson(map);
         _requestAssignedController.add(update);
       } catch (e) {
         print('Error parseando request_assigned: $e');
@@ -168,10 +211,13 @@ class SocketService {
     // Evento: Ubicación de ambulancia actualizada
     _socket!.on('ambulance_location_updated', (data) {
       print('📍 Ubicación ambulancia: $data');
+      final map = _coerceSocketMap(data);
+      if (map == null) {
+        print('Error parseando ambulance_location_updated: formato inesperado');
+        return;
+      }
       try {
-        final location = AmbulanceLocation.fromJson(
-          data as Map<String, dynamic>,
-        );
+        final location = AmbulanceLocation.fromJson(map);
         _ambulanceLocationController.add(location);
       } catch (e) {
         print('Error parseando ambulance_location_updated: $e');
@@ -181,8 +227,13 @@ class SocketService {
     // Evento: Estado de solicitud actualizado
     _socket!.on('request_status_updated', (data) {
       print('🔄 Estado actualizado: $data');
+      final map = _coerceSocketMap(data);
+      if (map == null) {
+        print('Error parseando request_status_updated: formato inesperado');
+        return;
+      }
       try {
-        final update = RequestUpdate.fromJson(data as Map<String, dynamic>);
+        final update = RequestUpdate.fromJson(map);
         _statusUpdateController.add(update);
       } catch (e) {
         print('Error parseando request_status_updated: $e');
@@ -192,8 +243,13 @@ class SocketService {
     // Evento: Nueva misión para el conductor
     _socket!.on('new_mission', (data) {
       print('🚨 Nueva misión recibida: $data');
+      final map = _coerceSocketMap(data);
+      if (map == null) {
+        print('Error parseando new_mission: formato inesperado');
+        return;
+      }
       try {
-        _newMissionController.add(data as Map<String, dynamic>);
+        _newMissionController.add(map);
       } catch (e) {
         print('Error parseando new_mission: $e');
       }
@@ -202,8 +258,13 @@ class SocketService {
     // Evento: Nueva solicitud de servicio (para admins)
     _socket!.on('new_service_request', (data) {
       print('🆕 Nueva solicitud de servicio: $data');
+      final map = _coerceSocketMap(data);
+      if (map == null) {
+        print('Error parseando new_service_request: formato inesperado');
+        return;
+      }
       try {
-        _newServiceRequestController.add(data as Map<String, dynamic>);
+        _newServiceRequestController.add(map);
       } catch (e) {
         print('Error parseando new_service_request: $e');
       }
@@ -212,8 +273,13 @@ class SocketService {
     // Evento: Solicitud cancelada
     _socket!.on('request_canceled', (data) {
       print('❌ Solicitud cancelada: $data');
+      final map = _coerceSocketMap(data);
+      if (map == null) {
+        print('Error parseando request_canceled: formato inesperado');
+        return;
+      }
       try {
-        final update = RequestUpdate.fromJson(data as Map<String, dynamic>);
+        final update = RequestUpdate.fromJson(map);
         _statusUpdateController.add(update);
         _requestCanceledController.add(
           update,
@@ -226,8 +292,13 @@ class SocketService {
     // Evento: Nueva calificación creada
     _socket!.on('rating_created', (data) {
       print('⭐ Nueva calificación creada: $data');
+      final map = _coerceSocketMap(data);
+      if (map == null) {
+        print('Error parseando rating_created: formato inesperado');
+        return;
+      }
       try {
-        _ratingCreatedController.add(data as Map<String, dynamic>);
+        _ratingCreatedController.add(map);
       } catch (e) {
         print('Error parseando rating_created: $e');
       }
@@ -251,8 +322,8 @@ class SocketService {
   void _authenticate(String token) {
     if (_socket == null || !_isConnected) return;
 
-    final payload = json.encode({'token': token});
-    _socket!.emit('authenticate', payload);
+    // Objeto: socket_io_client + Nest suelen entregar esto como { token } en el servidor.
+    _socket!.emit('authenticate', {'token': token});
     print('🔐 Enviando autenticación WebSocket...');
   }
 
