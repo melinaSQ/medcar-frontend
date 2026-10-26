@@ -17,6 +17,7 @@ import 'package:medcar_frontend/src/presentation/pages/client/home/bloc/client_h
 import 'package:medcar_frontend/src/presentation/pages/client/home/bloc/client_home_event.dart';
 import 'package:medcar_frontend/src/utils/map_coercion.dart';
 import 'package:medcar_frontend/src/utils/service_request_status.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 class RequestTrackingPage extends StatefulWidget {
   final double userLat;
@@ -65,6 +66,9 @@ class _RequestTrackingPageState extends State<RequestTrackingPage> {
   double? _companyRating;
   int _companyRatingCount = 0;
   int? _companyUserId;
+  /// Solo dígitos (código país + número) para `wa.me`.
+  String? _companyPhoneForWhatsApp;
+  String? _companyContactName;
 
   Set<Marker> _markers = {};
   Set<Polyline> _polylines = {};
@@ -143,6 +147,9 @@ class _RequestTrackingPageState extends State<RequestTrackingPage> {
     bool showAssignedSnack = true,
   }) async {
     final shift = coerceMap(requestDetails['shift']);
+    String? companyWaDigits;
+    String? companyDisplayName;
+
     if (shift != null) {
       final driver = coerceMap(shift['driver']);
       final ambulance = coerceMap(shift['ambulance']);
@@ -160,6 +167,11 @@ class _RequestTrackingPageState extends State<RequestTrackingPage> {
         _ambulancePlate = ambulance['plate']?.toString();
         final company = coerceMap(ambulance['company']);
         if (company != null) {
+          final cn = company['name']?.toString().trim();
+          if (cn != null && cn.isNotEmpty) {
+            companyDisplayName = cn;
+          }
+          companyWaDigits = _digitsForWhatsApp(company['phone']?.toString());
           final companyUser = coerceMap(company['user']);
           if (companyUser != null) {
             _companyUserId = companyUser['id'] is int
@@ -171,6 +183,9 @@ class _RequestTrackingPageState extends State<RequestTrackingPage> {
           }
         }
       }
+    } else {
+      companyWaDigits = null;
+      companyDisplayName = null;
     }
 
     final rid = parseServiceRequestId(requestDetails['id']);
@@ -187,6 +202,8 @@ class _RequestTrackingPageState extends State<RequestTrackingPage> {
     setState(() {
       _currentStatus = status;
       _statusMessage = message;
+      _companyPhoneForWhatsApp = companyWaDigits;
+      _companyContactName = companyDisplayName;
     });
     if (showAssignedSnack) {
       _showSnackBar('🚑 $message');
@@ -631,6 +648,57 @@ class _RequestTrackingPageState extends State<RequestTrackingPage> {
     );
   }
 
+  /// Solo dígitos; incluir código de país en el dato de la empresa (p. ej. 593…).
+  /// Solo dígitos para `wa.me`, en formato Bolivia (+591). Si el número ya empieza por 591, no se duplica.
+  String? _digitsForWhatsApp(String? raw) {
+    if (raw == null) return null;
+    var digits = raw.replaceAll(RegExp(r'\D'), '');
+    if (digits.isEmpty) return null;
+    while (digits.startsWith('0')) {
+      digits = digits.substring(1);
+      if (digits.isEmpty) return null;
+    }
+    if (!digits.startsWith('591')) {
+      digits = '591$digits';
+    }
+    return digits;
+  }
+
+  bool get _canShowCompanyWhatsApp {
+    final p = _companyPhoneForWhatsApp;
+    if (p == null || p.isEmpty) return false;
+    final s = _currentStatus.toUpperCase();
+    if (s == 'SEARCHING' ||
+        s == 'COMPLETED' ||
+        s == 'CANCELED' ||
+        s == 'CANCELLED') {
+      return false;
+    }
+    return true;
+  }
+
+  Future<void> _openCompanyWhatsApp() async {
+    final n = _companyPhoneForWhatsApp;
+    if (n == null || n.isEmpty) return;
+    final rid = _effectiveRequestId;
+    final text = rid != null
+        ? 'Hola, escribo por mi servicio MedCar (solicitud #$rid).'
+        : 'Hola, escribo por mi servicio MedCar.';
+    final uri = Uri.parse(
+      'https://wa.me/$n?text=${Uri.encodeComponent(text)}',
+    );
+    try {
+      final ok = await launchUrl(uri, mode: LaunchMode.externalApplication);
+      if (!ok && mounted) {
+        _showError('No se pudo abrir WhatsApp');
+      }
+    } catch (_) {
+      if (mounted) {
+        _showError('No se pudo abrir WhatsApp');
+      }
+    }
+  }
+
   Future<void> _loadDriverRating(int driverId) async {
     try {
       final authRepo = sl<AuthRepository>();
@@ -854,6 +922,27 @@ class _RequestTrackingPageState extends State<RequestTrackingPage> {
                     ),
                   ),
                 ],
+              ),
+            ),
+          ],
+
+          if (_canShowCompanyWhatsApp) ...[
+            const SizedBox(height: 12),
+            SizedBox(
+              width: double.infinity,
+              child: ElevatedButton.icon(
+                onPressed: _openCompanyWhatsApp,
+                icon: const Icon(Icons.chat, color: Colors.white),
+                label: Text(
+                  _companyContactName != null && _companyContactName!.isNotEmpty
+                      ? 'WhatsApp: $_companyContactName'
+                      : 'Contactar empresa por WhatsApp',
+                ),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xFF25D366),
+                  foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(vertical: 14),
+                ),
               ),
             ),
           ],

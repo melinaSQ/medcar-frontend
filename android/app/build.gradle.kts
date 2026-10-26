@@ -9,7 +9,9 @@ plugins {
 android {
     namespace = "com.example.medcar_frontend"
     compileSdk = flutter.compileSdkVersion
-    ndkVersion = flutter.ndkVersion
+    // Misma versión que tienes instalada en el SDK (completa, con llvm-strip).
+    // Si cambias de PC: sdkmanager "ndk;28.2.13676358"
+    ndkVersion = "28.2.13676358"
 
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_11
@@ -37,6 +39,13 @@ android {
             // TODO: Add your own signing config for the release build.
             // Signing with the debug keys for now, so `flutter run --release` works.
             signingConfig = signingConfigs.getByName("debug")
+        }
+    }
+
+    // Debug: no strip agresivo de .so (evita llvm-strip roto en NDK incompleto).
+    packaging {
+        jniLibs {
+            keepDebugSymbols.add("**/*.so")
         }
     }
 }

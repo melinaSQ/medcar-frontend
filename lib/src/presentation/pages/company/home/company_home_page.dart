@@ -1858,10 +1858,10 @@ class _CompanyHomeViewState extends State<_CompanyHomeView> {
                                           userId: foundUser!['id'],
                                           token: session.accessToken,
                                         );
-                                        if (!this.mounted) return;
+                                        if (!mounted) return;
                                         Navigator.pop(dialogContext);
                                         await _loadDrivers();
-                                        if (!this.mounted) return;
+                                        if (!mounted) return;
                                         setState(() => _currentTabIndex = 3);
                                         ScaffoldMessenger.of(this.context)
                                             .showSnackBar(
@@ -1875,7 +1875,7 @@ class _CompanyHomeViewState extends State<_CompanyHomeView> {
                                         );
                                       }
                                     } catch (e) {
-                                      if (this.mounted) {
+                                      if (mounted) {
                                         ScaffoldMessenger.of(this.context)
                                             .showSnackBar(
                                           SnackBar(

@@ -114,7 +114,7 @@ class PdfService {
                         _buildTableCell(plate),
                       ],
                     );
-                  }).toList(),
+                  }),
                 ],
               ),
 
@@ -252,7 +252,7 @@ class PdfService {
                         _buildTableCell('$serviceCount'),
                       ],
                     );
-                  }).toList(),
+                  }),
                 ],
               ),
 
@@ -379,7 +379,7 @@ class PdfService {
                         _buildTableCell(raterName),
                       ],
                     );
-                  }).toList(),
+                  }),
                 ],
               ),
 
@@ -475,9 +475,7 @@ class PdfService {
         );
       }
     } catch (e) {
-      final errorMessage = lastError != null
-          ? lastError.toString()
-          : e.toString();
+      final errorMessage = lastError.toString();
       throw Exception(
         'Error al generar PDF.\n'
         'Por favor, detén la app completamente y vuelve a ejecutarla (Stop y Run, no solo hot reload).\n'
