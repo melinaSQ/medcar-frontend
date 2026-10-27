@@ -668,30 +668,35 @@ class _DriverHomeViewState extends State<_DriverHomeView> {
             ],
           ),
           body: _buildBody(context, state),
-          floatingActionButton: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              FloatingActionButton(
-                heroTag: 'shifts_history',
-                onPressed: () {
-                  Navigator.pushNamed(context, 'driver/shifts-history');
-                },
-                backgroundColor: const Color(0xFF2E7D32),
-                child: const Icon(Icons.access_time, color: Colors.white),
-                tooltip: 'Historial de Turnos',
-              ),
-              const SizedBox(height: 12),
-              FloatingActionButton(
-                heroTag: 'services_history',
-                onPressed: () {
-                  Navigator.pushNamed(context, 'driver/history');
-                },
-                backgroundColor: Colors.white,
-                child: const Icon(Icons.history, color: Color(0xFF2E7D32)),
-                tooltip: 'Historial de Servicios',
-              ),
-            ],
-          ),
+          floatingActionButton: MediaQuery.viewInsetsOf(context).bottom > 0
+              ? null
+              : Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    FloatingActionButton(
+                      heroTag: 'shifts_history',
+                      onPressed: () {
+                        Navigator.pushNamed(context, 'driver/shifts-history');
+                      },
+                      backgroundColor: const Color(0xFF2E7D32),
+                      child: const Icon(Icons.access_time, color: Colors.white),
+                      tooltip: 'Historial de Turnos',
+                    ),
+                    const SizedBox(height: 12),
+                    FloatingActionButton(
+                      heroTag: 'services_history',
+                      onPressed: () {
+                        Navigator.pushNamed(context, 'driver/history');
+                      },
+                      backgroundColor: Colors.white,
+                      child: const Icon(
+                        Icons.history,
+                        color: Color(0xFF2E7D32),
+                      ),
+                      tooltip: 'Historial de Servicios',
+                    ),
+                  ],
+                ),
         );
       },
     );
@@ -722,100 +727,123 @@ class _DriverHomeViewState extends State<_DriverHomeView> {
   }
 
   Widget _buildNoShiftView(BuildContext context) {
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(24),
-        child: Card(
-          elevation: 4,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(16),
-          ),
-          child: Padding(
-            padding: const EdgeInsets.all(24),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                const Icon(
-                  Icons.local_shipping,
-                  size: 80,
-                  color: Color(0xFF2E7D32),
-                ),
-                const SizedBox(height: 16),
-                const Text(
-                  'Iniciar Turno',
-                  style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
-                ),
-                const SizedBox(height: 8),
-                Text(
-                  'Ingresa la placa y el código para comenzar',
-                  style: TextStyle(color: Colors.grey[600]),
-                  textAlign: TextAlign.center,
-                ),
-                const SizedBox(height: 24),
-                TextField(
-                  controller: _plateController,
-                  decoration: InputDecoration(
-                    labelText: 'Placa de la ambulancia',
-                    prefixIcon: const Icon(Icons.directions_car),
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(12),
-                    ),
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final minHeight = constraints.maxHeight > 32
+            ? constraints.maxHeight - 32
+            : 0.0;
+
+        return SingleChildScrollView(
+          keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+          padding: const EdgeInsets.all(16),
+          child: ConstrainedBox(
+            constraints: BoxConstraints(minHeight: minHeight),
+            child: Center(
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 480),
+                child: Card(
+                  elevation: 4,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(16),
                   ),
-                  textCapitalization: TextCapitalization.characters,
-                ),
-                const SizedBox(height: 16),
-                TextField(
-                  controller: _codeController,
-                  decoration: InputDecoration(
-                    labelText: 'Código de turno',
-                    prefixIcon: const Icon(Icons.qr_code),
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                  ),
-                  textCapitalization: TextCapitalization.characters,
-                ),
-                const SizedBox(height: 24),
-                SizedBox(
-                  width: double.infinity,
-                  child: ElevatedButton.icon(
-                    onPressed: () {
-                      if (_plateController.text.isEmpty ||
-                          _codeController.text.isEmpty) {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(
-                            content: Text('Completa todos los campos'),
-                          ),
-                        );
-                        return;
-                      }
-                      context.read<DriverHomeBloc>().add(
-                        StartShiftEvent(
-                          plate: _plateController.text.trim(),
-                          code: _codeController.text.trim(),
+                  child: Padding(
+                    padding: const EdgeInsets.all(24),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Icon(
+                          Icons.local_shipping,
+                          size: 80,
+                          color: Color(0xFF2E7D32),
                         ),
-                      );
-                    },
-                    icon: const Icon(Icons.play_arrow),
-                    label: const Text(
-                      'Iniciar Turno',
-                      style: TextStyle(fontSize: 18),
-                    ),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: const Color(0xFF2E7D32),
-                      foregroundColor: Colors.white,
-                      padding: const EdgeInsets.symmetric(vertical: 16),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12),
-                      ),
+                        const SizedBox(height: 16),
+                        const Text(
+                          'Iniciar Turno',
+                          style: TextStyle(
+                            fontSize: 24,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        Text(
+                          'Ingresa la placa y el código para comenzar',
+                          style: TextStyle(color: Colors.grey[600]),
+                          textAlign: TextAlign.center,
+                        ),
+                        const SizedBox(height: 24),
+                        TextField(
+                          controller: _plateController,
+                          textInputAction: TextInputAction.next,
+                          decoration: InputDecoration(
+                            labelText: 'Placa de la ambulancia',
+                            prefixIcon: const Icon(Icons.directions_car),
+                            border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                          ),
+                          textCapitalization: TextCapitalization.characters,
+                        ),
+                        const SizedBox(height: 16),
+                        TextField(
+                          controller: _codeController,
+                          keyboardType: TextInputType.number,
+                          textInputAction: TextInputAction.done,
+                          onSubmitted: (_) =>
+                              FocusScope.of(context).unfocus(),
+                          decoration: InputDecoration(
+                            labelText: 'Código de turno',
+                            prefixIcon: const Icon(Icons.qr_code),
+                            border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(height: 24),
+                        SizedBox(
+                          width: double.infinity,
+                          child: ElevatedButton.icon(
+                            onPressed: () {
+                              if (_plateController.text.isEmpty ||
+                                  _codeController.text.isEmpty) {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  const SnackBar(
+                                    content: Text('Completa todos los campos'),
+                                  ),
+                                );
+                                return;
+                              }
+                              FocusScope.of(context).unfocus();
+                              context.read<DriverHomeBloc>().add(
+                                StartShiftEvent(
+                                  plate: _plateController.text.trim(),
+                                  code: _codeController.text.trim(),
+                                ),
+                              );
+                            },
+                            icon: const Icon(Icons.play_arrow),
+                            label: const Text(
+                              'Iniciar Turno',
+                              style: TextStyle(fontSize: 18),
+                            ),
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: const Color(0xFF2E7D32),
+                              foregroundColor: Colors.white,
+                              padding: const EdgeInsets.symmetric(vertical: 16),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
                     ),
                   ),
                 ),
-              ],
+              ),
             ),
           ),
-        ),
-      ),
+        );
+      },
     );
   }
 
