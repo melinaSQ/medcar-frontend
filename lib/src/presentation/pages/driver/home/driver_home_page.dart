@@ -55,6 +55,7 @@ class _DriverHomeViewState extends State<_DriverHomeView> {
   Timer? _shiftPollTimer;
   int? _currentShiftId;
   int? _lastRouteSyncMissionId;
+  DateTime? _lastRouteRequestAt;
 
   // Flag para evitar procesar cancelación múltiples veces
   bool _isProcessingCancellation = false;
@@ -202,6 +203,7 @@ class _DriverHomeViewState extends State<_DriverHomeView> {
       _eta = null;
       _distance = null;
       _driverPosition = null;
+      _lastRouteRequestAt = null;
     });
     _locationTimer?.cancel();
     _locationTimer = null;
@@ -426,6 +428,11 @@ class _DriverHomeViewState extends State<_DriverHomeView> {
   }
 
   Future<void> _updateRouteToClient() async {
+    final now = DateTime.now();
+    if (_lastRouteRequestAt != null &&
+        now.difference(_lastRouteRequestAt!) < const Duration(minutes: 1)) {
+      return;
+    }
     if (_driverPosition == null) {
       print('❌ _updateRouteToClient: driverPosition es null');
       return;
@@ -465,9 +472,13 @@ class _DriverHomeViewState extends State<_DriverHomeView> {
     );
 
     try {
+      final session = await sl<AuthRepository>().getUserSession();
+      if (session == null) return;
+      _lastRouteRequestAt = now;
       final result = await DirectionsService.getDirections(
         origin: _driverPosition!,
         destination: clientPos,
+        token: session.accessToken,
       );
 
       if (result != null && mounted) {
@@ -483,11 +494,14 @@ class _DriverHomeViewState extends State<_DriverHomeView> {
             ),
           };
         });
-        print('🗺️ Ruta actualizada: $_distance, ETA: $_eta');
-      } else {
         print(
-          '❌ _updateRouteToClient: result es null o widget no está mounted',
+          '🗺️ Ruta actualizada: $_distance, ETA: $_eta, '
+          'puntos=${result.polylinePoints.length}',
         );
+      } else {
+        final routeError =
+            DirectionsService.lastError ?? 'result es null o widget no está mounted';
+        print('❌ _updateRouteToClient: $routeError');
       }
     } catch (e) {
       print('❌ Error obteniendo ruta: $e');
@@ -1016,6 +1030,14 @@ class _DriverHomeViewState extends State<_DriverHomeView> {
                   ],
                 ),
               ],
+            ),
+          ),
+        if (_polylines.isNotEmpty)
+          const Padding(
+            padding: EdgeInsets.only(bottom: 4),
+            child: Text(
+              'Rutas: openrouteservice · Datos: OpenStreetMap',
+              style: TextStyle(fontSize: 10, color: Colors.black54),
             ),
           ),
 

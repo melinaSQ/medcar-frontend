@@ -5,100 +5,94 @@
 import 'dart:convert';
 import 'package:http/http.dart' as http;
 import 'package:google_maps_flutter/google_maps_flutter.dart';
+import 'package:medcar_frontend/src/data/datasources/remote/auth_remote_datasource.dart';
 
 class DirectionsService {
-  // API Key de Google Maps (debe tener Directions API habilitada)
-  static const String _apiKey = 'AIzaSyCFnby3-GO4JaxvIUut1-uiy8dYgmquAEw';
-  
+  static String? lastError;
+
   /// Obtiene la ruta entre dos puntos
   static Future<DirectionsResult?> getDirections({
     required LatLng origin,
     required LatLng destination,
+    required String token,
   }) async {
-    final url = Uri.parse(
-      'https://maps.googleapis.com/maps/api/directions/json'
-      '?origin=${origin.latitude},${origin.longitude}'
-      '&destination=${destination.latitude},${destination.longitude}'
-      '&mode=driving'
-      '&language=es'
-      '&key=$_apiKey'
-    );
-
+    lastError = null;
     try {
-      final response = await http.get(url);
-      
-      if (response.statusCode == 200) {
-        final data = json.decode(response.body);
-        
-        final status = data['status']?.toString() ?? '';
-        if (status == 'OK' && data['routes'] != null && (data['routes'] as List).isNotEmpty) {
-          final route = data['routes'][0];
-          final leg = route['legs'][0];
-          
-          // Decodificar la polyline
-          final encoded = route['overview_polyline']?['points']?.toString() ?? '';
-          final polylinePoints = encoded.isEmpty ? <LatLng>[] : _decodePolyline(encoded);
-          
-          return DirectionsResult(
-            polylinePoints: polylinePoints,
-            distance: leg['distance']['text'],
-            distanceValue: leg['distance']['value'],
-            duration: leg['duration']['text'],
-            durationValue: leg['duration']['value'],
-          );
+      final response = await http
+          .post(
+            Uri.parse('$apiUrl/routing/directions'),
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': 'Bearer $token',
+            },
+            body: json.encode({
+              'originLat': origin.latitude,
+              'originLng': origin.longitude,
+              'destinationLat': destination.latitude,
+              'destinationLng': destination.longitude,
+            }),
+          )
+          .timeout(const Duration(seconds: 12));
+
+      if (response.statusCode < 200 || response.statusCode >= 300) {
+        var message = 'El backend respondió HTTP ${response.statusCode}.';
+        try {
+          final error = json.decode(response.body);
+          if (error is Map<String, dynamic> && error['message'] != null) {
+            final detail = error['message'];
+            message = detail is List ? detail.join(', ') : detail.toString();
+          }
+        } catch (_) {
+          // Keep the safe HTTP status message when the body is not JSON.
         }
-        print(
-          '❌ Directions status=$status err=${data['error_message']} body=${response.body.length > 200 ? response.body.substring(0, 200) : response.body}',
-        );
+        lastError = message;
+        print('❌ Routing API HTTP ${response.statusCode}: $message');
+        return null;
       }
-      
-      print('❌ Error HTTP Directions: ${response.statusCode} ${response.body}');
-      return null;
+
+      final data = json.decode(response.body) as Map<String, dynamic>;
+      final coordinates = data['coordinates'] as List?;
+      if (coordinates == null || coordinates.length < 2) {
+        lastError = 'El backend no devolvió una ruta válida.';
+        return null;
+      }
+      final points = coordinates.map((coordinate) {
+        final pair = coordinate as List;
+        return LatLng(
+          (pair[1] as num).toDouble(),
+          (pair[0] as num).toDouble(),
+        );
+      }).toList();
+      if (points.length < 2) {
+        lastError = 'La ruta recibida no contiene suficientes puntos.';
+        return null;
+      }
+
+      final distanceMeters = (data['distanceMeters'] as num?)?.round() ?? 0;
+      final durationValue =
+          (data['durationSeconds'] as num?)?.round() ?? 0;
+      print(
+        '✅ Ruta recibida del backend: ${points.length} puntos, '
+        '$distanceMeters m, $durationValue s.',
+      );
+      return DirectionsResult(
+        polylinePoints: points,
+        distance: distanceMeters >= 1000
+            ? '${(distanceMeters / 1000).toStringAsFixed(1)} km'
+            : '$distanceMeters m',
+        distanceValue: distanceMeters,
+        duration: durationValue < 60
+            ? '<1 min'
+            : '${(durationValue / 60).ceil()} min',
+        durationValue: durationValue,
+      );
     } catch (e) {
-      print('❌ Error obteniendo direcciones: $e');
+      lastError = 'No se pudo conectar con el servidor de rutas.';
+      print('❌ Error obteniendo ruta: $e');
       return null;
     }
   }
 
-  /// Decodifica la polyline codificada de Google
-  static List<LatLng> _decodePolyline(String encoded) {
-    List<LatLng> points = [];
-    int index = 0;
-    int lat = 0;
-    int lng = 0;
-
-    while (index < encoded.length) {
-      int shift = 0;
-      int result = 0;
-
-      // Decodificar latitud
-      int b;
-      do {
-        b = encoded.codeUnitAt(index++) - 63;
-        result |= (b & 0x1f) << shift;
-        shift += 5;
-      } while (b >= 0x20);
-
-      int dlat = ((result & 1) != 0 ? ~(result >> 1) : (result >> 1));
-      lat += dlat;
-
-      // Decodificar longitud
-      shift = 0;
-      result = 0;
-      do {
-        b = encoded.codeUnitAt(index++) - 63;
-        result |= (b & 0x1f) << shift;
-        shift += 5;
-      } while (b >= 0x20);
-
-      int dlng = ((result & 1) != 0 ? ~(result >> 1) : (result >> 1));
-      lng += dlng;
-
-      points.add(LatLng(lat / 1E5, lng / 1E5));
-    }
-
-    return points;
-  }
 }
 
 class DirectionsResult {
@@ -116,4 +110,3 @@ class DirectionsResult {
     required this.durationValue,
   });
 }
-

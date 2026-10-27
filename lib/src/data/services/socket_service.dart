@@ -187,19 +187,23 @@ class SocketService {
 
     // Evento: No autorizado
     _socket!.on('unauthorized', (data) {
-      print('❌ WebSocket no autorizado: $data');
+      print('❌ WebSocket no autorizado');
       _isAuthenticated = false;
       _authController.add(false);
     });
 
     // Evento: Solicitud asignada
     _socket!.on('request_assigned', (data) {
-      print('🚑 Solicitud asignada: $data');
       final map = _coerceSocketMap(data);
       if (map == null) {
         print('Error parseando request_assigned: formato inesperado');
         return;
       }
+      final details = _coerceSocketMap(map['requestDetails']);
+      print(
+        '🚑 Solicitud asignada: id=${details?['id']}, '
+        'status=${details?['status']}',
+      );
       try {
         final update = RequestUpdate.fromJson(map);
         _requestAssignedController.add(update);
@@ -226,12 +230,16 @@ class SocketService {
 
     // Evento: Estado de solicitud actualizado
     _socket!.on('request_status_updated', (data) {
-      print('🔄 Estado actualizado: $data');
       final map = _coerceSocketMap(data);
       if (map == null) {
         print('Error parseando request_status_updated: formato inesperado');
         return;
       }
+      final details = _coerceSocketMap(map['requestDetails']);
+      print(
+        '🔄 Estado actualizado: id=${details?['id']}, '
+        'status=${details?['status']}',
+      );
       try {
         final update = RequestUpdate.fromJson(map);
         _statusUpdateController.add(update);
@@ -242,12 +250,16 @@ class SocketService {
 
     // Evento: Nueva misión para el conductor
     _socket!.on('new_mission', (data) {
-      print('🚨 Nueva misión recibida: $data');
       final map = _coerceSocketMap(data);
       if (map == null) {
         print('Error parseando new_mission: formato inesperado');
         return;
       }
+      final details = _coerceSocketMap(map['requestDetails']);
+      print(
+        '🚨 Nueva misión recibida: id=${details?['id']}, '
+        'status=${details?['status']}',
+      );
       try {
         _newMissionController.add(map);
       } catch (e) {
@@ -257,12 +269,16 @@ class SocketService {
 
     // Evento: Nueva solicitud de servicio (para admins)
     _socket!.on('new_service_request', (data) {
-      print('🆕 Nueva solicitud de servicio: $data');
       final map = _coerceSocketMap(data);
       if (map == null) {
         print('Error parseando new_service_request: formato inesperado');
         return;
       }
+      final details = _coerceSocketMap(map['requestDetails']);
+      print(
+        '🆕 Nueva solicitud de servicio: id=${details?['id']}, '
+        'status=${details?['status']}',
+      );
       try {
         _newServiceRequestController.add(map);
       } catch (e) {

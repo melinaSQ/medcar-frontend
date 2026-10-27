@@ -49,7 +49,12 @@ class _RequestTrackingPageState extends State<RequestTrackingPage> {
   String? _eta;
   String? _distance;
   int _directionsRequestGen = 0;
-  int _polylineEpoch = 0;
+  bool _routeLoading = false;
+  bool _cameraMoving = false;
+  bool _hasFittedRoute = false;
+  DateTime? _lastRouteAttempt;
+  String? _routeError;
+
   /// ID resuelto desde el API si `widget.requestId` viene vacío (notificaciones, etc.).
   int? _resolvedRequestId;
 
@@ -66,6 +71,7 @@ class _RequestTrackingPageState extends State<RequestTrackingPage> {
   double? _companyRating;
   int _companyRatingCount = 0;
   int? _companyUserId;
+
   /// Solo dígitos (código país + número) para `wa.me`.
   String? _companyPhoneForWhatsApp;
   String? _companyContactName;
@@ -259,6 +265,7 @@ class _RequestTrackingPageState extends State<RequestTrackingPage> {
       final authRepo = sl<AuthRepository>();
       final session = await authRepo.getUserSession();
 
+      if (!mounted) return;
       if (session == null) {
         _showError('No hay sesión activa');
         return;
@@ -268,16 +275,18 @@ class _RequestTrackingPageState extends State<RequestTrackingPage> {
 
       // Escuchar eventos
       _connectionSub = _socketService.connectionStream.listen((connected) {
-        setState(() => _isConnected = connected);
+        if (mounted) setState(() => _isConnected = connected);
       });
 
       _authSub = _socketService.authStream.listen((authenticated) async {
-        if (authenticated) {
-          if (mounted) {
-            setState(() {
-              _statusMessage = 'Conectado. Buscando ambulancia...';
-            });
+        if (!mounted) return;
+        setState(() {
+          _isConnected = authenticated && _socketService.isConnected;
+          if (authenticated) {
+            _statusMessage = 'Conectado. Buscando ambulancia...';
           }
+        });
+        if (authenticated) {
           await _hydrateActiveRequestFromApi();
         }
       });
@@ -315,12 +324,24 @@ class _RequestTrackingPageState extends State<RequestTrackingPage> {
 
       // Conectar
       _socketService.connect(session.accessToken);
+      // SocketService es singleton y puede venir conectado desde la pantalla
+      // principal; en ese caso no se emite un nuevo evento connectionStream.
+      if (mounted) {
+        setState(() => _isConnected = _socketService.isConnected);
+      }
     } catch (e) {
       _showError('Error al conectar: $e');
     }
   }
 
   Future<void> _updateAmbulancePosition(double lat, double lng) async {
+    if (!mounted ||
+        !lat.isFinite ||
+        !lng.isFinite ||
+        lat.abs() > 90 ||
+        lng.abs() > 180) {
+      return;
+    }
     final newPosition = LatLng(lat, lng);
 
     setState(() {
@@ -350,7 +371,9 @@ class _RequestTrackingPageState extends State<RequestTrackingPage> {
           Marker(
             markerId: const MarkerId('ambulance_location'),
             position: _ambulancePosition!,
-            icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueBlue),
+            icon: BitmapDescriptor.defaultMarkerWithHue(
+              BitmapDescriptor.hueBlue,
+            ),
             infoWindow: InfoWindow(
               title: 'Ambulancia',
               snippet: _eta != null ? 'Llega en $_eta' : null,
@@ -360,117 +383,94 @@ class _RequestTrackingPageState extends State<RequestTrackingPage> {
       });
     }
 
-    _fitBounds();
+    if (!_hasFittedRoute) await _fitBounds();
   }
 
   Future<void> _getDirections(LatLng ambulancePos) async {
+    final now = DateTime.now();
+    if (_routeLoading ||
+        (_lastRouteAttempt != null &&
+            now.difference(_lastRouteAttempt!) < const Duration(minutes: 1))) {
+      return;
+    }
+    _routeLoading = true;
+    _lastRouteAttempt = now;
     final gen = ++_directionsRequestGen;
     try {
-      final userPos = LatLng(widget.userLat, widget.userLng);
+      final session = await sl<AuthRepository>().getUserSession();
+      if (session == null) return;
       final result = await DirectionsService.getDirections(
         origin: ambulancePos,
-        destination: userPos,
+        destination: LatLng(widget.userLat, widget.userLng),
+        token: session.accessToken,
       );
-
-      if (!mounted || gen != _directionsRequestGen) {
-        return;
-      }
-
-      if (result != null) {
-        setState(() {
-          _eta = result.duration;
-          _distance = result.distance;
-          final pts = result.polylinePoints.isNotEmpty
-              ? result.polylinePoints
-              : [ambulancePos, userPos];
-          _polylineEpoch++;
-          _polylines = {
-            Polyline(
-              polylineId: PolylineId('route_$_polylineEpoch'),
-              points: pts,
-              color: const Color(0xFF652580),
-              width: 6,
-              geodesic: true,
-            ),
-          };
-        });
-
-        print(
-          '📍 Ruta obtenida: $_distance, ETA: $_eta, pts=${result.polylinePoints.length}',
-        );
-      } else {
-        setState(() {
-          _eta = null;
-          _distance = null;
-          _polylineEpoch++;
-          _polylines = {
-            Polyline(
-              polylineId: PolylineId('route_$_polylineEpoch'),
-              points: [ambulancePos, userPos],
-              color: const Color(0xFF652580),
-              width: 6,
-              geodesic: true,
-            ),
-          };
-        });
-        print('📍 Directions sin ruta OK: línea recta ambulancia → cliente');
-      }
-    } catch (e) {
-      print('❌ Error obteniendo ruta: $e');
-      if (!mounted || gen != _directionsRequestGen) {
-        return;
-      }
+      if (!mounted || gen != _directionsRequestGen) return;
       setState(() {
-        _polylineEpoch++;
+        if (result == null || result.polylinePoints.length < 2) {
+          _routeError = DirectionsService.lastError ??
+              'No se pudo actualizar la ruta por calles. Reintentando...';
+          print('❌ Seguimiento: no llegó una ruta válida. $_routeError');
+          return;
+        }
+        _routeError = null;
+        _eta = result.duration;
+        _distance = result.distance;
         _polylines = {
           Polyline(
-            polylineId: PolylineId('route_$_polylineEpoch'),
-            points: [ambulancePos, LatLng(widget.userLat, widget.userLng)],
-            color: Colors.blue,
+            polylineId: const PolylineId('route'),
+            points: result.polylinePoints,
+            color: const Color(0xFF652580),
             width: 6,
-            geodesic: true,
           ),
         };
+        print(
+          '✅ Seguimiento: polyline actualizada con '
+          '${result.polylinePoints.length} puntos.',
+        );
       });
+    } finally {
+      _routeLoading = false;
     }
   }
 
-  void _fitBounds() {
-    if (_mapController == null || _ambulancePosition == null) return;
-
+  Future<void> _fitBounds() async {
+    final controller = _mapController;
+    final position = _ambulancePosition;
+    if (!mounted || controller == null || position == null || _cameraMoving) {
+      return;
+    }
     final bounds = LatLngBounds(
       southwest: LatLng(
-        _ambulancePosition!.latitude < widget.userLat
-            ? _ambulancePosition!.latitude
-            : widget.userLat,
-        _ambulancePosition!.longitude < widget.userLng
-            ? _ambulancePosition!.longitude
+        position.latitude < widget.userLat ? position.latitude : widget.userLat,
+        position.longitude < widget.userLng
+            ? position.longitude
             : widget.userLng,
       ),
       northeast: LatLng(
-        _ambulancePosition!.latitude > widget.userLat
-            ? _ambulancePosition!.latitude
-            : widget.userLat,
-        _ambulancePosition!.longitude > widget.userLng
-            ? _ambulancePosition!.longitude
+        position.latitude > widget.userLat ? position.latitude : widget.userLat,
+        position.longitude > widget.userLng
+            ? position.longitude
             : widget.userLng,
       ),
     );
-
-    _mapController!
-        .animateCamera(CameraUpdate.newLatLngBounds(bounds, 100))
-        .catchError((Object e) {
-      print('⚠️ fitBounds: $e — usando centro intermedio');
-      return _mapController!.moveCamera(
-        CameraUpdate.newLatLngZoom(
-          LatLng(
-            (_ambulancePosition!.latitude + widget.userLat) / 2,
-            (_ambulancePosition!.longitude + widget.userLng) / 2,
-          ),
-          13,
-        ),
+    _cameraMoving = true;
+    try {
+      final samePoint =
+          (position.latitude - widget.userLat).abs() < 0.0001 &&
+          (position.longitude - widget.userLng).abs() < 0.0001;
+      await controller.animateCamera(
+        samePoint
+            ? CameraUpdate.newLatLngZoom(position, 16)
+            : CameraUpdate.newLatLngBounds(bounds, 60),
       );
-    });
+      if (mounted && identical(controller, _mapController)) {
+        _hasFittedRoute = true;
+      }
+    } catch (e) {
+      print('No se pudo ajustar la cámara del mapa: $e');
+    } finally {
+      _cameraMoving = false;
+    }
   }
 
   void _handleStatusUpdate(RequestUpdate update) {
@@ -684,9 +684,7 @@ class _RequestTrackingPageState extends State<RequestTrackingPage> {
     final text = rid != null
         ? 'Hola, escribo por mi servicio MedCar (solicitud #$rid).'
         : 'Hola, escribo por mi servicio MedCar.';
-    final uri = Uri.parse(
-      'https://wa.me/$n?text=${Uri.encodeComponent(text)}',
-    );
+    final uri = Uri.parse('https://wa.me/$n?text=${Uri.encodeComponent(text)}');
     try {
       final ok = await launchUrl(uri, mode: LaunchMode.externalApplication);
       if (!ok && mounted) {
@@ -749,7 +747,9 @@ class _RequestTrackingPageState extends State<RequestTrackingPage> {
   void dispose() {
     _hydratePollTimer?.cancel();
     _cancelTrackingSocketSubs();
+    _directionsRequestGen++;
     _mapController?.dispose();
+    _mapController = null;
     super.dispose();
   }
 
@@ -782,20 +782,13 @@ class _RequestTrackingPageState extends State<RequestTrackingPage> {
           // Mapa
           Expanded(
             child: GoogleMap(
-              key: ValueKey('track_route_$_polylineEpoch'),
+              key: const ValueKey('tracking_map'),
               onMapCreated: (controller) {
                 _mapController = controller;
                 WidgetsBinding.instance.addPostFrameCallback((_) {
                   if (mounted) {
                     if (_ambulancePosition != null) {
                       _fitBounds();
-                    } else {
-                      controller.animateCamera(
-                        CameraUpdate.newLatLngZoom(
-                          LatLng(widget.userLat, widget.userLng),
-                          15,
-                        ),
-                      );
                     }
                   }
                 });
@@ -1008,6 +1001,11 @@ class _RequestTrackingPageState extends State<RequestTrackingPage> {
             ),
           ],
 
+          if (_routeError != null) ...[
+            const SizedBox(height: 8),
+            Text(_routeError!, style: const TextStyle(color: Colors.orange)),
+          ],
+
           // ETA y distancia (solo si hay ambulancia en camino)
           if (_eta != null &&
               _distance != null &&
@@ -1071,6 +1069,13 @@ class _RequestTrackingPageState extends State<RequestTrackingPage> {
                     ],
                   ),
                 ],
+              ),
+            ),
+            const Padding(
+              padding: EdgeInsets.only(top: 4),
+              child: Text(
+                'Rutas: openrouteservice · Datos: OpenStreetMap',
+                style: TextStyle(fontSize: 10, color: Colors.black54),
               ),
             ),
           ],
