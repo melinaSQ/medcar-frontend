@@ -44,6 +44,7 @@ class _ProfilePageState extends State<ProfilePage>
   bool _showNewPassword = false;
   bool _showConfirmPassword = false;
   bool _hasPendingContactRequest = false;
+  String _activeRole = 'USER';
 
   /// Solicitud de empresa del usuario (si aplica).
   Map<String, dynamic>? _myCompanyReg;
@@ -66,6 +67,10 @@ class _ProfilePageState extends State<ProfilePage>
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
+    final roleArgument = ModalRoute.of(context)?.settings.arguments;
+    if (roleArgument is String && roleArgument.isNotEmpty) {
+      _activeRole = roleArgument.toUpperCase();
+    }
     final route = ModalRoute.of(context);
     if (route is PageRoute<void>) {
       appRouteObserver.subscribe(this, route);
@@ -179,6 +184,7 @@ class _ProfilePageState extends State<ProfilePage>
 
   /// Solo datos de empresa: admin de empresa con solicitud aprobada y sin rol de administrador del sistema.
   bool get _companyOnlyProfileMode {
+    if (_activeRole != 'COMPANY_ADMIN') return false;
     final ru = _accountRoles.map((e) => e.toUpperCase()).toList();
     if (!ru.contains('COMPANY_ADMIN')) return false;
     if (ru.contains('SYSTEM_ADMIN') || ru.contains('ADMIN')) return false;

@@ -33,7 +33,7 @@ class ClientHomeContent extends StatelessWidget {
             icon: const Icon(Icons.person),
             tooltip: 'Mi Perfil',
             onPressed: () {
-              Navigator.pushNamed(context, 'profile');
+              Navigator.pushNamed(context, 'profile', arguments: 'USER');
             },
           ),
           IconButton(

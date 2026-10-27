@@ -627,7 +627,11 @@ class _DriverHomeViewState extends State<_DriverHomeView> {
                 icon: const Icon(Icons.person, color: Colors.white),
                 tooltip: 'Mi Perfil',
                 onPressed: () {
-                  Navigator.pushNamed(context, 'profile');
+                  Navigator.pushNamed(
+                    context,
+                    'profile',
+                    arguments: 'DRIVER',
+                  );
                 },
               ),
               IconButton(

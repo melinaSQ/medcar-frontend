@@ -40,7 +40,11 @@ class _AdminSystemHomePageState extends State<AdminSystemHomePage> {
         actions: [
           IconButton(
             icon: const Icon(Icons.person_outline),
-            onPressed: () => Navigator.pushNamed(context, 'profile'),
+            onPressed: () => Navigator.pushNamed(
+              context,
+              'profile',
+              arguments: 'SYSTEM_ADMIN',
+            ),
           ),
         ],
       ),
